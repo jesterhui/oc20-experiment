@@ -42,7 +42,7 @@ class S2EFDataset(torch.utils.data.Dataset):
 
     def __init__(self, samples_file: str):
         """Load S2EF samples from file."""
-        self.samples = torch.load(samples_file)
+        self.samples = torch.load(samples_file, weights_only=False)
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -208,8 +208,20 @@ class S2EFTrainer:
             pred_forces = predictions["forces"]
             true_forces = targets["forces"]
 
-            # Expand mask to cover xyz dimensions
-            forces_mask = mask.unsqueeze(-1).expand_as(pred_forces)
+            # Ensure mask matches the padded sequence length
+            # If forces were padded, we need to adjust the mask accordingly
+            if mask.size(1) != true_forces.size(1):
+                if mask.size(1) > true_forces.size(1):
+                    # Mask is longer than forces, truncate it
+                    adjusted_mask = mask[:, :true_forces.size(1)]
+                else:
+                    # Forces are longer than mask, pad mask with False
+                    adjusted_mask = torch.zeros(true_forces.size(0), true_forces.size(1), dtype=mask.dtype, device=mask.device)
+                    adjusted_mask[:, :mask.size(1)] = mask
+                forces_mask = adjusted_mask.unsqueeze(-1).expand_as(pred_forces)
+            else:
+                # Expand mask to cover xyz dimensions
+                forces_mask = mask.unsqueeze(-1).expand_as(pred_forces)
 
             # Only compute loss for valid atoms
             masked_pred = pred_forces[forces_mask]
@@ -447,6 +459,9 @@ def main():
     parser.add_argument(
         "--save-every", type=int, default=10, help="Save checkpoint every N epochs"
     )
+    parser.add_argument(
+        "--test", action="store_true", help="Test mode: process only one file pair"
+    )
 
     args = parser.parse_args()
 
@@ -462,11 +477,13 @@ def main():
     else:
         print(f"Processing raw data from {args.data_dir}")
         # Process data using ingestion pipeline
+        max_files = 4 if args.test else None
         ingestion = S2EFDataIngestion(
             data_dir=args.data_dir,
             output_dir="./temp_processed",
             max_atoms=args.max_atoms,
             max_workers=4,
+            max_files=max_files,
         )
 
         # Save processed data
@@ -476,6 +493,10 @@ def main():
 
     print(f"Dataset size: {len(dataset)} samples")
 
+    # Create collate function with max_atoms parameter
+    from functools import partial
+    collate_fn_with_max_atoms = partial(collate_s2ef_samples, max_atoms=args.max_atoms)
+    
     # Train/validation split
     if args.val_split > 0:
         val_size = int(len(dataset) * args.val_split)
@@ -488,20 +509,19 @@ def main():
             val_dataset,
             batch_size=args.batch_size,
             shuffle=False,
-            collate_fn=collate_s2ef_samples,
+            collate_fn=collate_fn_with_max_atoms,
         )
         print(f"Train: {train_size}, Val: {val_size}")
     else:
         train_dataset = dataset
         val_loader = None
         print(f"Train: {len(train_dataset)} (no validation)")
-
-    # Create data loaders
+    
     train_loader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
         shuffle=True,
-        collate_fn=collate_s2ef_samples,
+        collate_fn=collate_fn_with_max_atoms,
     )
 
     # Create model

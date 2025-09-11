@@ -575,7 +575,7 @@ class BatchedS2EFSamples:
         )
 
 
-def collate_s2ef_samples(samples: List[S2EFSample]) -> BatchedS2EFSamples:
+def collate_s2ef_samples(samples: List[S2EFSample], max_atoms: int = None) -> BatchedS2EFSamples:
     """
     Collate function for batching S2EF samples.
 
@@ -591,14 +591,42 @@ def collate_s2ef_samples(samples: List[S2EFSample]) -> BatchedS2EFSamples:
     lattice_format = samples[0].structure.lattice.format
     lattice_data = torch.stack([s.structure.lattice.data for s in samples])
 
-    # Get atomic data
+    # Get atomic data - need to handle variable number of atoms
     coordinate_system = samples[0].structure.atoms.coordinate_system
-    atomic_numbers = torch.stack([s.structure.atoms.atomic_numbers for s in samples])
-    coordinates = torch.stack([s.structure.atoms.coordinates for s in samples])
+    
+    # Pad sequences to handle variable number of atoms
+    from torch.nn.utils.rnn import pad_sequence
+    
+    if max_atoms is not None:
+        # Pad to fixed max_atoms length
+        batch_size = len(samples)
+        
+        # Find actual max length in this batch
+        max_len_in_batch = max(s.structure.atoms.atomic_numbers.size(0) for s in samples)
+        target_len = min(max_atoms, max_len_in_batch)
+        
+        # Pad atomic numbers
+        atomic_numbers = torch.zeros(batch_size, target_len, dtype=samples[0].structure.atoms.atomic_numbers.dtype)
+        coordinates = torch.zeros(batch_size, target_len, 3, dtype=samples[0].structure.atoms.coordinates.dtype)
+        
+        masks = None
+        if samples[0].structure.atoms.mask is not None:
+            masks = torch.zeros(batch_size, target_len, dtype=samples[0].structure.atoms.mask.dtype)
+        
+        for i, sample in enumerate(samples):
+            seq_len = min(sample.structure.atoms.atomic_numbers.size(0), target_len)
+            atomic_numbers[i, :seq_len] = sample.structure.atoms.atomic_numbers[:seq_len]
+            coordinates[i, :seq_len] = sample.structure.atoms.coordinates[:seq_len]
+            if masks is not None and sample.structure.atoms.mask is not None:
+                masks[i, :seq_len] = sample.structure.atoms.mask[:seq_len]
+    else:
+        # Use dynamic padding (original behavior)
+        atomic_numbers = pad_sequence([s.structure.atoms.atomic_numbers for s in samples], batch_first=True, padding_value=0)
+        coordinates = pad_sequence([s.structure.atoms.coordinates for s in samples], batch_first=True, padding_value=0.0)
 
-    masks = None
-    if samples[0].structure.atoms.mask is not None:
-        masks = torch.stack([s.structure.atoms.mask for s in samples])
+        masks = None
+        if samples[0].structure.atoms.mask is not None:
+            masks = pad_sequence([s.structure.atoms.mask for s in samples], batch_first=True, padding_value=False)
 
     # Get target data
     energies = None
@@ -607,7 +635,17 @@ def collate_s2ef_samples(samples: List[S2EFSample]) -> BatchedS2EFSamples:
 
     forces = None
     if samples[0].targets.forces is not None:
-        forces = torch.stack([s.targets.forces for s in samples])
+        if max_atoms is not None:
+            # Pad forces to same length as other tensors
+            batch_size = len(samples)
+            target_len = atomic_numbers.size(1)  # Use same length as atomic_numbers
+            forces = torch.zeros(batch_size, target_len, 3, dtype=samples[0].targets.forces.dtype)
+            
+            for i, sample in enumerate(samples):
+                seq_len = min(sample.targets.forces.size(0), target_len)
+                forces[i, :seq_len] = sample.targets.forces[:seq_len]
+        else:
+            forces = pad_sequence([s.targets.forces for s in samples], batch_first=True, padding_value=0.0)
 
     stress = None
     if samples[0].targets.stress is not None:

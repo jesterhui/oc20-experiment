@@ -26,6 +26,7 @@ class S2EFDataIngestion:
         max_workers: int = 4,
         chunk_size: int = 1000,
         transform_lattice: str = "matrix",
+        max_files: int = None,
     ):
         self.data_dir = Path(data_dir)
         self.output_dir = Path(output_dir)
@@ -40,6 +41,9 @@ class S2EFDataIngestion:
         self.data_files: List[Tuple[Path, Path]] = find_data_files(
             self.data_dir, self.logger
         )
+        if max_files is not None:
+            self.data_files = self.data_files[:max_files]
+            self.logger.info(f"Limited to {max_files} data file pairs (test mode)")
         self.logger.info(f"Found {len(self.data_files)} data file pairs")
 
     def _atoms_to_pst_format(self, atoms, metadata: S2EFMetadata) -> Dict:
