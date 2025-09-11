@@ -27,3 +27,11 @@ CLAUDE.md
 AGENTS.md
 CONTRIBUTING.md
 docs/
+
+# Training artifacts and large files
+checkpoints/
+scripts/checkpoints/
+temp_processed/
+scripts/temp_processed/
+*.pt
+*.log

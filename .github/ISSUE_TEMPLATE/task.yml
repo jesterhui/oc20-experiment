@@ -1,0 +1,85 @@
+name: Task (MCP)
+description: Single, structured task for solo + AI (MCP) workflow
+title: "task: <short summary>"
+labels: [task, ai-proposed]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to define a task for you and AI agents (MCP) to execute.
+
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: One-line description of the outcome
+      placeholder: e.g., Add mask handling to fractional coords
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal / Definition of Done
+      description: Concrete, testable end state
+      placeholder: |
+        - Shapes validated via unit test
+        - Example script runs on sample data
+        - README updated if behavior changed
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context & Constraints
+      description: Relevant paths, data availability, budgets, privacy, or scope constraints
+      placeholder: |
+        Data path lives at /path/to/... (not committed). Keep API stable.
+    validations:
+      required: false
+
+  - type: textarea
+    id: inputs
+    attributes:
+      label: Inputs for MCP
+      description: Files/dirs to read, allowed commands/tools, any setup steps
+      placeholder: |
+        Read: src/oc20_exp/models/..., tests/...; Allowed: run pytest; No network ops
+    validations:
+      required: false
+
+  - type: textarea
+    id: plan_seed
+    attributes:
+      label: Plan Seed (optional)
+      description: Rough bullets to guide the agent plan
+      placeholder: |
+        1) Add mask handling; 2) Add unit test; 3) Update README
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: Checklist of testable outcomes
+      placeholder: |
+        - [ ] Tests pass locally (pytest -q)
+        - [ ] Example script runs
+        - [ ] Docs updated
+    validations:
+      required: true
+
+  - type: textarea
+    id: artifacts
+    attributes:
+      label: Artifacts
+      description: Expected outputs (files, diffs, logs, PR links)
+      placeholder: |
+        - tests/test_x.py added
+        - README section updated
+    validations:
+      required: false
+
