@@ -1,0 +1,1 @@
+"""Data-related helpers (placeholder)."""

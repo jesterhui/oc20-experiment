@@ -1,0 +1,42 @@
+[project]
+name = "oc20-exp"
+version = "0.1.0"
+description = "Periodic Set Transformer for OC20 dataset experiments"
+readme = "README.md"
+requires-python = ">=3.9,<3.10"
+dependencies = [
+    "numpy<= 2",
+    "torch>=2.8.0",
+    "einops>=0.6.0",
+    # OC20 data loading dependencies
+    "ase>=3.19.1",
+    "lmdb>=1.0.0",
+    # Optional but recommended
+    "pymatgen>=2020.4.2",
+    "tqdm>=4.0.0",
+    "fairchem-core>=1.0.0",
+    "torch-geometric>=2.6.1",
+    "torch-scatter",
+]
+
+[project.optional-dependencies]
+fairchem = [
+    "fairchem-core>=1.0.0",
+]
+wandb = [
+    "wandb>=0.15.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "jupyter>=1.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
