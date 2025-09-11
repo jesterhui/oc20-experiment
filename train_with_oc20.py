@@ -17,8 +17,8 @@ import argparse
 import logging
 from typing import Dict, Any, Optional
 
-from periodic_set_transformer import PeriodicSetTransformer
-from oc20_data_loader import OC20ToPST, OC20DataModule, collate_pst_batch
+from oc20_exp.models import PeriodicSetTransformer
+from oc20_exp.data.oc20_data_loader import OC20ToPST, OC20DataModule, collate_pst_batch
 
 # Try to import wandb for logging
 try:

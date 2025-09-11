@@ -12,7 +12,7 @@ def test_load_metadata_tmpfile(tmp_path: Path):
 
     metas = load_metadata(txt_path)
     assert len(metas) == 2
-    assert metas[0].system_id == 1
+    assert metas[0].system_id == "1"
     assert metas[1].reference_energy == -2.34
 
 

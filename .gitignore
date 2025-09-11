@@ -8,3 +8,22 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Data files
+*.tar
+*.tar.gz
+*.zip
+s2ef_train_*
+
+# System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Documentation files (except README)
+CLAUDE.md
+AGENTS.md
+CONTRIBUTING.md
+docs/
