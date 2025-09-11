@@ -83,7 +83,7 @@ class PeriodicSetTransformer(nn.Module):
 
     def forward(
         self,
-        lattice: torch.Tensor,  # (batch, 6)
+        lattice: torch.Tensor,  # (batch, 6) or (batch, 3, 3)
         atomic_numbers: torch.Tensor,  # (batch, max_atoms)
         fractional_coords: torch.Tensor,  # (batch, max_atoms, 3) in [0,1)
         mask: Optional[torch.Tensor] = None,  # (batch, max_atoms), True/1 = valid
@@ -94,7 +94,10 @@ class PeriodicSetTransformer(nn.Module):
 
         self._validate_inputs(lattice, atomic_numbers, fractional_coords, mask)
 
-        cell_token = self.create_cell_token(lattice)
+        # Convert lattice to 6D format if needed
+        lattice_6d = self._ensure_lattice_6d(lattice)
+        
+        cell_token = self.create_cell_token(lattice_6d)
 
         atom_tokens = self.create_atom_tokens(atomic_numbers, fractional_coords, mask)
 
@@ -157,6 +160,47 @@ class PeriodicSetTransformer(nn.Module):
 
         return transformer_mask
 
+    def _ensure_lattice_6d(self, lattice: torch.Tensor) -> torch.Tensor:
+        """Convert lattice matrix to 6D parameters if needed."""
+        if lattice.dim() == 2 and lattice.shape[-1] == 6:
+            # Already in 6D format
+            return lattice
+        elif lattice.dim() == 3 and lattice.shape[-2:] == (3, 3):
+            # Convert 3x3 matrix to 6D parameters
+            return self._matrix_to_params(lattice)
+        else:
+            raise ValueError(
+                "lattice must be (batch, 6) or (batch, 3, 3), got shape: " + str(lattice.shape)
+            )
+    
+    def _matrix_to_params(self, matrix: torch.Tensor) -> torch.Tensor:
+        """Convert 3x3 lattice matrix to 6D parameters (a,b,c,α,β,γ)."""
+        # Extract lattice vectors
+        a_vec = matrix[..., 0, :]  # (batch, 3)
+        b_vec = matrix[..., 1, :]  # (batch, 3)
+        c_vec = matrix[..., 2, :]  # (batch, 3)
+        
+        # Calculate lengths
+        a = torch.norm(a_vec, dim=-1)  # (batch,)
+        b = torch.norm(b_vec, dim=-1)  # (batch,)
+        c = torch.norm(c_vec, dim=-1)  # (batch,)
+        
+        # Calculate angles in degrees
+        cos_alpha = torch.sum(b_vec * c_vec, dim=-1) / (b * c)
+        cos_beta = torch.sum(a_vec * c_vec, dim=-1) / (a * c)
+        cos_gamma = torch.sum(a_vec * b_vec, dim=-1) / (a * b)
+        
+        # Clamp to avoid numerical issues with acos
+        cos_alpha = torch.clamp(cos_alpha, -1.0 + 1e-7, 1.0 - 1e-7)
+        cos_beta = torch.clamp(cos_beta, -1.0 + 1e-7, 1.0 - 1e-7)
+        cos_gamma = torch.clamp(cos_gamma, -1.0 + 1e-7, 1.0 - 1e-7)
+        
+        alpha = torch.acos(cos_alpha) * 180.0 / math.pi
+        beta = torch.acos(cos_beta) * 180.0 / math.pi
+        gamma = torch.acos(cos_gamma) * 180.0 / math.pi
+        
+        return torch.stack([a, b, c, alpha, beta, gamma], dim=-1)
+
     def _validate_inputs(
         self,
         lattice: torch.Tensor,
@@ -164,9 +208,16 @@ class PeriodicSetTransformer(nn.Module):
         fractional_coords: torch.Tensor,
         mask: Optional[torch.Tensor],
     ) -> None:
-        if lattice.dim() != 2 or lattice.shape[-1] != 6:
+        # Updated validation to handle both formats
+        if lattice.dim() == 2 and lattice.shape[-1] == 6:
+            # 6D format is valid
+            pass
+        elif lattice.dim() == 3 and lattice.shape[-2:] == (3, 3):
+            # 3x3 matrix format is valid
+            pass
+        else:
             raise ValueError(
-                "lattice must be (batch, 6) = (a,b,c,alpha_deg,beta_deg,gamma_deg)"
+                "lattice must be (batch, 6) = (a,b,c,alpha_deg,beta_deg,gamma_deg) or (batch, 3, 3) matrix"
             )
         if fractional_coords.shape[-1] != 3:
             raise ValueError("fractional_coords must have last dim 3")
