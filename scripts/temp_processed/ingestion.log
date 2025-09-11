@@ -1,0 +1,37 @@
+2025-09-10 22:18:21,083 - oc20_exp.data.s2ef.pipeline - INFO - Found 40 data file pairs
+2025-09-10 22:18:21,083 - oc20_exp.data.s2ef.pipeline - INFO - Saving data to PyTorch format...
+2025-09-10 22:18:21,083 - oc20_exp.data.s2ef.pipeline - INFO - Processing 0.extxyz.xz and 0.txt.xz
+2025-09-10 22:18:21,084 - oc20_exp.data.s2ef.pipeline - INFO - Processing 1.extxyz.xz and 1.txt.xz
+2025-09-10 22:18:21,105 - oc20_exp.data.s2ef.pipeline - INFO - Processing 10.extxyz.xz and 10.txt.xz
+2025-09-10 22:18:21,107 - oc20_exp.data.s2ef.pipeline - INFO - Processing 11.extxyz.xz and 11.txt.xz
+2025-09-10 22:18:27,842 - oc20_exp.data.s2ef.pipeline - INFO - Loaded 5000 structures from 1.extxyz.xz
+2025-09-10 22:18:28,363 - oc20_exp.data.s2ef.pipeline - INFO - Loaded 5000 structures from 0.extxyz.xz
+2025-09-10 22:18:29,259 - oc20_exp.data.s2ef.pipeline - INFO - Loaded 5000 structures from 11.extxyz.xz
+2025-09-10 22:18:29,877 - oc20_exp.data.s2ef.pipeline - INFO - Loaded 5000 structures from 10.extxyz.xz
+2025-09-10 22:18:44,280 - oc20_exp.data.s2ef.pipeline - INFO - Processing 12.extxyz.xz and 12.txt.xz
+2025-09-10 22:18:44,683 - oc20_exp.data.s2ef.pipeline - INFO - Processing 13.extxyz.xz and 13.txt.xz
+2025-09-10 22:18:44,725 - oc20_exp.data.s2ef.pipeline - INFO - Processing 14.extxyz.xz and 14.txt.xz
+2025-09-10 22:18:45,495 - oc20_exp.data.s2ef.pipeline - INFO - Processing 15.extxyz.xz and 15.txt.xz
+2025-09-10 22:18:51,393 - oc20_exp.data.s2ef.pipeline - INFO - Loaded 5000 structures from 12.extxyz.xz
+2025-09-10 22:18:53,536 - oc20_exp.data.s2ef.pipeline - INFO - Loaded 5000 structures from 13.extxyz.xz
+2025-09-10 22:18:55,074 - oc20_exp.data.s2ef.pipeline - INFO - Loaded 5000 structures from 14.extxyz.xz
+2025-09-10 22:18:58,616 - oc20_exp.data.s2ef.pipeline - INFO - Loaded 5000 structures from 15.extxyz.xz
+2025-09-10 22:19:10,204 - oc20_exp.data.s2ef.pipeline - INFO - Processing 16.extxyz.xz and 16.txt.xz
+2025-09-10 22:19:10,220 - oc20_exp.data.s2ef.pipeline - INFO - Processing 17.extxyz.xz and 17.txt.xz
+2025-09-10 22:19:10,817 - oc20_exp.data.s2ef.pipeline - INFO - Processing 18.extxyz.xz and 18.txt.xz
+2025-09-10 22:19:13,470 - oc20_exp.data.s2ef.pipeline - INFO - Processing 19.extxyz.xz and 19.txt.xz
+2025-09-10 22:19:18,321 - oc20_exp.data.s2ef.pipeline - INFO - Loaded 5000 structures from 17.extxyz.xz
+2025-09-10 22:19:22,329 - oc20_exp.data.s2ef.pipeline - INFO - Loaded 5000 structures from 16.extxyz.xz
+2025-09-10 22:19:23,256 - oc20_exp.data.s2ef.pipeline - INFO - Loaded 5000 structures from 18.extxyz.xz
+2025-09-10 22:19:33,016 - oc20_exp.data.s2ef.pipeline - INFO - Loaded 5000 structures from 19.extxyz.xz
+2025-09-10 22:19:38,574 - oc20_exp.data.s2ef.pipeline - INFO - Processing 2.extxyz.xz and 2.txt.xz
+2025-09-10 22:19:40,252 - oc20_exp.data.s2ef.pipeline - INFO - Processing 20.extxyz.xz and 20.txt.xz
+2025-09-10 22:19:40,669 - oc20_exp.data.s2ef.pipeline - INFO - Processing 21.extxyz.xz and 21.txt.xz
+2025-09-10 22:19:44,523 - oc20_exp.data.s2ef.pipeline - INFO - Processing 22.extxyz.xz and 22.txt.xz
+2025-09-10 22:19:47,701 - oc20_exp.data.s2ef.pipeline - INFO - Loaded 5000 structures from 2.extxyz.xz
+2025-09-10 22:19:55,765 - oc20_exp.data.s2ef.pipeline - INFO - Loaded 5000 structures from 21.extxyz.xz
+2025-09-10 22:19:56,161 - oc20_exp.data.s2ef.pipeline - INFO - Loaded 5000 structures from 20.extxyz.xz
+2025-09-10 22:20:05,391 - oc20_exp.data.s2ef.pipeline - INFO - Processing 23.extxyz.xz and 23.txt.xz
+2025-09-10 22:20:07,136 - oc20_exp.data.s2ef.pipeline - INFO - Loaded 5000 structures from 22.extxyz.xz
+2025-09-10 22:20:16,651 - oc20_exp.data.s2ef.pipeline - INFO - Processing 24.extxyz.xz and 24.txt.xz
+2025-09-10 22:20:18,638 - oc20_exp.data.s2ef.pipeline - INFO - Processing 25.extxyz.xz and 25.txt.xz
