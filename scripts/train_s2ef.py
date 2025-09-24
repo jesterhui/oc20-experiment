@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from oc20_exp.models import PeriodicSetTransformer
 from oc20_exp.data.s2ef import S2EFDataIngestion
-from oc20_exp.data_structures import (
+from oc20_exp.types import (
     S2EFSample,
     BatchedS2EFSamples,
     collate_s2ef_samples,

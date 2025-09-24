@@ -27,7 +27,8 @@ oc20_exp/
 │       │       ├── io.py
 │       │       ├── persist.py
 │       │       └── types.py
-│       └── data_structures.py           # typed structures, batching, masks
+│       └── types/
+│           └── data_structures.py           # typed structures, batching, masks
 └── tests/                               # minimal tests where present
 ```
 
