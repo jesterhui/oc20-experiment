@@ -9,7 +9,7 @@ and convert it to the format required by the Periodic Set Transformer:
 """
 
 import warnings
-from typing import Optional
+from typing import Optional, cast
 
 import numpy as np
 import torch
@@ -95,7 +95,7 @@ class OC20ToPST(Dataset):
         else:
             return len(self.atoms_list)
 
-    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
+    def __getitem__(self, idx: int) -> dict[str, object]:
         """
         Get item converted to PST format.
 
@@ -143,7 +143,7 @@ class OC20ToPST(Dataset):
 
         return atoms
 
-    def atoms_to_pst_format(self, atoms: Atoms) -> dict[str, torch.Tensor]:
+    def atoms_to_pst_format(self, atoms: Atoms) -> dict[str, object]:
         """
         Convert ASE Atoms to Periodic Set Transformer format.
 
@@ -189,7 +189,7 @@ class OC20ToPST(Dataset):
         mask[:n_atoms_actual] = True
 
         # Convert to tensors
-        result = {
+        result: dict[str, object] = {
             "lattice": lattice,
             "atomic_numbers": torch.tensor(padded_atomic_numbers, dtype=torch.long),
             "fractional_coords": torch.tensor(padded_fractional_coords, dtype=torch.float32),
@@ -204,7 +204,7 @@ class OC20ToPST(Dataset):
         return result
 
 
-def collate_pst_batch(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
+def collate_pst_batch(batch: list[dict[str, object]]) -> dict[str, object]:
     """
     Collate function for batching PST format data.
 
@@ -216,12 +216,15 @@ def collate_pst_batch(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch.T
     """
     keys = ["lattice", "atomic_numbers", "fractional_coords", "mask"]
 
-    result = {}
+    result: dict[str, object] = {}
     for key in keys:
-        result[key] = torch.stack([item[key] for item in batch], dim=0)
+        result[key] = torch.stack(
+            [cast(torch.Tensor, item[key]) for item in batch],
+            dim=0,
+        )
 
     # Handle metadata separately
-    result["metadata"] = [item["metadata"] for item in batch]
+    result["metadata"] = [cast(dict[str, object], item["metadata"]) for item in batch]
 
     return result
 
@@ -302,7 +305,7 @@ class OC20DataModule:
         )
 
 
-def create_example_from_cif(cif_path: str) -> dict[str, torch.Tensor]:
+def create_example_from_cif(cif_path: str) -> dict[str, object]:
     """
     Create PST format data from a CIF file (useful for testing).
 

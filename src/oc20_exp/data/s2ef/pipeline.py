@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Optional
 
 from oc20_exp.utils.logging import get_logger
 
@@ -24,7 +23,7 @@ class S2EFDataIngestion:
         max_workers: int = 4,
         chunk_size: int = 1000,
         transform_lattice: str = "matrix",
-        max_files: Optional[int] = None,
+        max_files: int | None = None,
     ):
         self.data_dir = Path(data_dir)
         self.output_dir = Path(output_dir)

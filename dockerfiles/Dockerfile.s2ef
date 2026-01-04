@@ -16,7 +16,8 @@ ENV PATH="/opt/conda/envs/oc20/bin:$PATH" \
     CONDA_DEFAULT_ENV="oc20" \
     PYTHONUNBUFFERED="1" \
     PIP_NO_CACHE_DIR="1" \
-    PYTHONDONTWRITEBYTECODE="1"
+    PYTHONDONTWRITEBYTECODE="1" \
+    UV_SYSTEM_PYTHON="1"
 
 # Install uv (fast Python package manager)
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \

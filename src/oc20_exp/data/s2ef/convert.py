@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Any, Union
 
 import numpy as np
 import torch
@@ -17,7 +17,7 @@ def atoms_to_pst_format(
     *,
     max_atoms: int,
     transform_lattice: str = "matrix",
-) -> dict[str, Union[torch.Tensor, dict]]:
+) -> dict[str, Union[torch.Tensor, dict[str, Any], None]]:
     """Convert ASE Atoms to Periodic Set Transformer (PST) sample dict."""
     n_atoms = len(atoms)
     atomic_numbers = atoms.get_atomic_numbers()
