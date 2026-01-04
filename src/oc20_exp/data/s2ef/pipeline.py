@@ -1,3 +1,9 @@
+"""S2EF data ingestion pipeline for OC20 dataset.
+
+This module provides the main pipeline class for loading S2EF data files,
+converting structures to PST format, and exporting to multiple file formats.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -25,6 +31,17 @@ class S2EFDataIngestion:
         transform_lattice: str = "matrix",
         max_files: int | None = None,
     ):
+        """Initialize the S2EF data ingestion pipeline.
+
+        Args:
+            data_dir: Directory containing S2EF extxyz and txt files.
+            output_dir: Directory where processed data will be saved.
+            max_atoms: Maximum number of atoms for padding structures.
+            max_workers: Number of parallel workers for file processing.
+            chunk_size: Number of structures per chunk for batching.
+            transform_lattice: Lattice format ("matrix" or "params").
+            max_files: If set, limit processing to this many file pairs (for testing).
+        """
         self.data_dir = Path(data_dir)
         self.output_dir = Path(output_dir)
         self.max_atoms = max_atoms
@@ -42,6 +59,15 @@ class S2EFDataIngestion:
         self.logger.info(f"Found {len(self.data_files)} data file pairs")
 
     def _atoms_to_pst_format(self, atoms, metadata: S2EFMetadata) -> dict:
+        """Convert ASE Atoms object to PST format with metadata.
+
+        Args:
+            atoms: ASE Atoms object representing a structure.
+            metadata: S2EF metadata for this structure.
+
+        Returns:
+            Dictionary in PST format with lattice, atomic_numbers, coords, mask, and metadata.
+        """
         return atoms_to_pst_format(
             atoms,
             metadata,
@@ -50,6 +76,15 @@ class S2EFDataIngestion:
         )
 
     def process_file_pair(self, extxyz_file: Path, txt_file: Path) -> list[dict]:
+        """Process a pair of extxyz and txt files into PST format.
+
+        Args:
+            extxyz_file: Path to extended XYZ file with structures.
+            txt_file: Path to metadata text file.
+
+        Returns:
+            List of processed structures in PST format.
+        """
         self.logger.info(f"Processing {extxyz_file.name} and {txt_file.name}")
         metadata_list = load_metadata(txt_file)
         structures = load_structures(extxyz_file, self.output_dir, self.logger)
@@ -72,6 +107,11 @@ class S2EFDataIngestion:
         return processed
 
     def process_all_files(self) -> Iterator[list[dict]]:
+        """Process all file pairs in parallel and yield chunks of structures.
+
+        Yields:
+            Chunks of processed structures as lists of PST format dictionaries.
+        """
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             future_to_files = {
                 executor.submit(self.process_file_pair, extxyz, txt): (extxyz, txt)
@@ -87,18 +127,33 @@ class S2EFDataIngestion:
                     self.logger.error(f"Error processing {extxyz_file.name}: {e}")
 
     def save_to_pytorch(self, output_file: str = "s2ef_dataset.pt"):
+        """Save processed data to PyTorch format.
+
+        Args:
+            output_file: Name of the output PyTorch file (relative to output_dir).
+        """
         out = self.output_dir / output_file
         self.logger.info("Saving data to PyTorch format...")
         save_all_to_pytorch(self.process_all_files(), out, save_stats=True)
         self.logger.info(f"Saved dataset to {out}")
 
     def save_to_lmdb(self, output_file: str = "s2ef_dataset.lmdb"):
+        """Save processed data to LMDB format.
+
+        Args:
+            output_file: Name of the output LMDB directory (relative to output_dir).
+        """
         out = self.output_dir / output_file
         self.logger.info("Saving data to LMDB format...")
         save_all_to_lmdb(self.process_all_files(), out)
         self.logger.info(f"Saved dataset to {out}")
 
     def save_to_hdf5(self, output_file: str = "s2ef_dataset.h5"):
+        """Save processed data to HDF5 format.
+
+        Args:
+            output_file: Name of the output HDF5 file (relative to output_dir).
+        """
         out = self.output_dir / output_file
         self.logger.info("Saving data to HDF5 format...")
         save_all_to_hdf5(self.process_all_files(), out, max_atoms=self.max_atoms)

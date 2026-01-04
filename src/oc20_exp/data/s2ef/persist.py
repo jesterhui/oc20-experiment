@@ -1,3 +1,9 @@
+"""Persistence utilities for saving S2EF data in multiple formats.
+
+This module provides functions to save processed S2EF data to PyTorch,
+LMDB, and HDF5 formats, along with dataset statistics.
+"""
+
 import io as _io
 import json
 from collections.abc import Iterable, Iterator
@@ -13,6 +19,13 @@ def save_all_to_pytorch(
     *,
     save_stats: bool = True,
 ):
+    """Save all chunks to a single PyTorch file.
+
+    Args:
+        chunks: Iterator of data chunks (each chunk is a list of dicts).
+        output_path: Path where the PyTorch file will be saved.
+        save_stats: If True, save dataset statistics to a JSON file.
+    """
     all_data: list[dict] = []
     for chunk in chunks:
         all_data.extend(chunk)
@@ -27,6 +40,13 @@ def save_all_to_lmdb(
     *,
     map_size_bytes: int = 50 * 1024**3,
 ):
+    """Save all chunks to an LMDB database for fast random access.
+
+    Args:
+        chunks: Iterator of data chunks (each chunk is a list of dicts).
+        output_path: Path where the LMDB database will be created.
+        map_size_bytes: Maximum size of the database in bytes (default 50GB).
+    """
     try:
         import lmdb
     except ImportError as e:
@@ -52,6 +72,13 @@ def save_all_to_hdf5(
     *,
     max_atoms: int,
 ):
+    """Save all chunks to an HDF5 file with resizable datasets.
+
+    Args:
+        chunks: Iterable of data chunks (each chunk is a list of dicts).
+        output_path: Path where the HDF5 file will be saved.
+        max_atoms: Maximum number of atoms per structure for padding.
+    """
     try:
         import h5py
     except ImportError as e:
@@ -105,6 +132,12 @@ def save_all_to_hdf5(
 
 
 def save_dataset_stats(data: list[dict], stats_file: Path):
+    """Save dataset statistics to a JSON file.
+
+    Args:
+        data: List of data dictionaries containing metadata.
+        stats_file: Path where the JSON statistics file will be saved.
+    """
     stats = {
         "total_structures": len(data),
         "max_atoms_per_structure": int(max(d["metadata"]["n_atoms"] for d in data) if data else 0),
