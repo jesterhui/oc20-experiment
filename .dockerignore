@@ -1,0 +1,17 @@
+__pycache__/
+*.py[oc]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.python-version
+.git/
+.DS_Store
+checkpoints/
+temp_processed/
+s2ef_train_*/
+*.pt
+*.log
+*.tar
+*.tar.gz
+*.zip

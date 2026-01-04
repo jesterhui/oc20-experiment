@@ -19,6 +19,7 @@ dependencies = [
     "torch-scatter",
     "modal>=1.1.4",
     "fire>=0.7.1",
+    "PyYAML>=6.0.0",
 ]
 
 [project.optional-dependencies]
@@ -109,6 +110,7 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 warn_no_return = true
 strict_equality = true
+mypy_path = ["src"]
 
 [[tool.mypy.overrides]]
 module = [
