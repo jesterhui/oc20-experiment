@@ -1,6 +1,6 @@
 import lzma
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 try:
     from ase import Atoms
@@ -67,7 +67,7 @@ def load_structures(extxyz_file: Path, temp_dir: Path, logger) -> list[Atoms]:
     try:
         structures = read(str(temp_file), ":")
         logger.info(f"Loaded {len(structures)} structures from {extxyz_file.name}")
-        return structures
+        return cast(list[Atoms], structures)
     finally:
         if temp_file.exists():
             temp_file.unlink()

@@ -10,7 +10,7 @@ import json
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, cast
 
 import torch
 
@@ -66,7 +66,11 @@ class LatticeData:
         # This would require ASE or similar library for proper conversion
         # For now, return identity matrix as placeholder
         batch_size = self.batch_size
-        matrix = torch.eye(3).unsqueeze(0).repeat(batch_size, 1, 1)
+        matrix = (
+            torch.eye(3, device=self.data.device, dtype=self.data.dtype)
+            .unsqueeze(0)
+            .repeat(batch_size, 1, 1)
+        )
         return LatticeData(matrix, LatticeFormat.MATRIX_3X3)
 
     def to_params(self) -> LatticeData:
@@ -78,9 +82,8 @@ class LatticeData:
         # This would require proper crystallographic conversion
         # For now, return dummy parameters
         batch_size = self.batch_size
-        params = (
-            torch.tensor([10.0, 10.0, 10.0, 90.0, 90.0, 90.0]).unsqueeze(0).repeat(batch_size, 1)
-        )
+        params = self.data.new_tensor([10.0, 10.0, 10.0, 90.0, 90.0, 90.0]).unsqueeze(0)
+        params = params.repeat(batch_size, 1)
         return LatticeData(params, LatticeFormat.PARAMS_6D)
 
     def volume(self) -> torch.Tensor:
@@ -90,7 +93,8 @@ class LatticeData:
         else:
             # For 6D params: V = abc * sqrt(1 + 2*cos(α)*cos(β)*cos(γ) - cos²(α) - cos²(β) - cos²(γ))
             a, b, c = self.data[..., 0], self.data[..., 1], self.data[..., 2]
-            alpha, beta, gamma = torch.deg2rad(self.data[..., 3:6].unbind(-1))
+            angles = torch.deg2rad(self.data[..., 3:6])
+            alpha, beta, gamma = angles.unbind(-1)
 
             cos_alpha, cos_beta, cos_gamma = (
                 torch.cos(alpha),
@@ -268,7 +272,7 @@ class CrystalStructure:
             metadata=self.metadata.copy(),
         )
 
-    def to_pst_format(self) -> dict[str, torch.Tensor]:
+    def to_pst_format(self) -> dict[str, torch.Tensor | None]:
         """
         Convert to Periodic Set Transformer input format.
 
@@ -430,7 +434,7 @@ class S2EFSample:
             frame_number=self.frame_number,
         )
 
-    def to_pst_input(self) -> dict[str, torch.Tensor]:
+    def to_pst_input(self) -> dict[str, torch.Tensor | None]:
         """Convert to Periodic Set Transformer input format."""
         return self.structure.to_pst_format()
 
@@ -471,7 +475,7 @@ class BatchedS2EFSamples:
             ),
         )
 
-    def to_pst_input(self) -> dict[str, torch.Tensor]:
+    def to_pst_input(self) -> dict[str, torch.Tensor | None]:
         """Convert to Periodic Set Transformer input format."""
         return self.structures.to_pst_format()
 
@@ -502,15 +506,15 @@ class BatchedS2EFSamples:
                 reference_energy=self.targets.reference_energy,
             ),
             sample_id=self.sample_ids[idx] if self.sample_ids is not None else None,
-            system_id=(self.system_ids[idx].item() if self.system_ids is not None else None),
+            system_id=(int(self.system_ids[idx].item()) if self.system_ids is not None else None),
             frame_number=(
-                self.frame_numbers[idx].item() if self.frame_numbers is not None else None
+                int(self.frame_numbers[idx].item()) if self.frame_numbers is not None else None
             ),
         )
 
 
 def collate_s2ef_samples(
-    samples: list[S2EFSample], max_atoms: Optional[int] = None
+    samples: list[S2EFSample], max_atoms: int | None = None
 ) -> BatchedS2EFSamples:
     """
     Collate function for batching S2EF samples.
@@ -564,6 +568,8 @@ def collate_s2ef_samples(
             coordinates[i, :seq_len] = sample.structure.atoms.coordinates[:seq_len]
             if masks is not None and sample.structure.atoms.mask is not None:
                 masks[i, :seq_len] = sample.structure.atoms.mask[:seq_len]
+            elif masks is not None:
+                raise ValueError("Expected atom masks for all samples when mask is present")
     else:
         # Use dynamic padding (original behavior)
         atomic_numbers = pad_sequence(
@@ -579,8 +585,10 @@ def collate_s2ef_samples(
 
         masks = None
         if samples[0].structure.atoms.mask is not None:
+            if any(s.structure.atoms.mask is None for s in samples):
+                raise ValueError("Expected atom masks for all samples when mask is present")
             masks = pad_sequence(
-                [s.structure.atoms.mask for s in samples],
+                [cast(torch.Tensor, s.structure.atoms.mask) for s in samples],
                 batch_first=True,
                 padding_value=False,
             )
@@ -588,10 +596,14 @@ def collate_s2ef_samples(
     # Get target data
     energies = None
     if samples[0].targets.energy is not None:
-        energies = torch.stack([s.targets.energy for s in samples])
+        if any(s.targets.energy is None for s in samples):
+            raise ValueError("Expected energy targets for all samples when energy is present")
+        energies = torch.stack([cast(torch.Tensor, s.targets.energy) for s in samples])
 
     forces = None
     if samples[0].targets.forces is not None:
+        if any(s.targets.forces is None for s in samples):
+            raise ValueError("Expected force targets for all samples when forces are present")
         if max_atoms is not None:
             # Pad forces to same length as other tensors
             batch_size = len(samples)
@@ -599,27 +611,38 @@ def collate_s2ef_samples(
             forces = torch.zeros(batch_size, target_len, 3, dtype=samples[0].targets.forces.dtype)
 
             for i, sample in enumerate(samples):
-                seq_len = min(sample.targets.forces.size(0), target_len)
-                forces[i, :seq_len] = sample.targets.forces[:seq_len]
+                sample_forces = cast(torch.Tensor, sample.targets.forces)
+                seq_len = min(sample_forces.size(0), target_len)
+                forces[i, :seq_len] = sample_forces[:seq_len]
         else:
             forces = pad_sequence(
-                [s.targets.forces for s in samples], batch_first=True, padding_value=0.0
+                [cast(torch.Tensor, s.targets.forces) for s in samples],
+                batch_first=True,
+                padding_value=0.0,
             )
 
     stress = None
     if samples[0].targets.stress is not None:
-        stress = torch.stack([s.targets.stress for s in samples])
+        if any(s.targets.stress is None for s in samples):
+            raise ValueError("Expected stress targets for all samples when stress is present")
+        stress = torch.stack([cast(torch.Tensor, s.targets.stress) for s in samples])
 
     # Collect metadata
-    sample_ids = [s.sample_id for s in samples] if samples[0].sample_id is not None else None
-    system_ids = (
-        torch.tensor([s.system_id for s in samples]) if samples[0].system_id is not None else None
-    )
-    frame_numbers = (
-        torch.tensor([s.frame_number for s in samples])
-        if samples[0].frame_number is not None
-        else None
-    )
+    sample_ids = None
+    if samples[0].sample_id is not None:
+        if any(s.sample_id is None for s in samples):
+            raise ValueError("Expected sample_id for all samples when sample_id is present")
+        sample_ids = [cast(str, s.sample_id) for s in samples]
+    system_ids = None
+    if samples[0].system_id is not None:
+        if any(s.system_id is None for s in samples):
+            raise ValueError("Expected system_id for all samples when system_id is present")
+        system_ids = torch.tensor([int(cast(int, s.system_id)) for s in samples])
+    frame_numbers = None
+    if samples[0].frame_number is not None:
+        if any(s.frame_number is None for s in samples):
+            raise ValueError("Expected frame_number for all samples when frame_number is present")
+        frame_numbers = torch.tensor([int(cast(int, s.frame_number)) for s in samples])
 
     return BatchedS2EFSamples(
         structures=CrystalStructure(
@@ -679,7 +702,7 @@ def load_crystal_structure(path: str | Path) -> CrystalStructure:
     path = Path(path)
 
     if path.suffix == ".pt":
-        return torch.load(path)
+        return cast(CrystalStructure, torch.load(path))
     elif path.suffix == ".json":
         with open(path) as f:
             data = json.load(f)
