@@ -1,4 +1,5 @@
-from typing import Dict, Union
+from typing import Union
+
 import numpy as np
 import torch
 
@@ -16,7 +17,7 @@ def atoms_to_pst_format(
     *,
     max_atoms: int,
     transform_lattice: str = "matrix",
-) -> Dict[str, Union[torch.Tensor, dict]]:
+) -> dict[str, Union[torch.Tensor, dict]]:
     """Convert ASE Atoms to Periodic Set Transformer (PST) sample dict."""
     n_atoms = len(atoms)
     atomic_numbers = atoms.get_atomic_numbers()
@@ -46,16 +47,10 @@ def atoms_to_pst_format(
     return {
         "lattice": lattice,
         "atomic_numbers": torch.tensor(padded_atomic_numbers, dtype=torch.long),
-        "fractional_coords": torch.tensor(
-            padded_fractional_coords, dtype=torch.float32
-        ),
+        "fractional_coords": torch.tensor(padded_fractional_coords, dtype=torch.float32),
         "mask": torch.tensor(mask, dtype=torch.bool),
-        "energy": (
-            torch.tensor(energy, dtype=torch.float32) if energy is not None else None
-        ),
-        "forces": (
-            torch.tensor(forces, dtype=torch.float32) if forces is not None else None
-        ),
+        "energy": (torch.tensor(energy, dtype=torch.float32) if energy is not None else None),
+        "forces": (torch.tensor(forces, dtype=torch.float32) if forces is not None else None),
         "metadata": {
             "system_id": metadata.system_id,
             "frame_number": metadata.frame_number,

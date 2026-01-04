@@ -1,12 +1,11 @@
 import pytest
 
 ase = pytest.importorskip("ase")
-from ase import Atoms
+import torch  # noqa: E402
+from ase import Atoms  # noqa: E402
 
-import torch
-
-from oc20_exp.data.s2ef.types import S2EFMetadata
-from oc20_exp.data.s2ef.convert import atoms_to_pst_format
+from oc20_exp.data.s2ef.convert import atoms_to_pst_format  # noqa: E402
+from oc20_exp.data.s2ef.types import S2EFMetadata  # noqa: E402
 
 
 def test_atoms_to_pst_format_shapes():

@@ -8,39 +8,39 @@ and convert it to the format required by the Periodic Set Transformer:
 - fractional_coords: fractional coordinates in [0,1)
 """
 
-import torch
-import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
-import numpy as np
-from typing import Optional, Tuple, List, Dict, Any
 import warnings
+from typing import Optional
+
+import numpy as np
+import torch
+from torch.utils.data import DataLoader, Dataset
 
 try:
-    import ase
+    import ase  # noqa: F401
     from ase import Atoms
     from ase.io import read
 
     HAS_ASE = True
 except ImportError:
     HAS_ASE = False
-    warnings.warn("ASE not installed. Install with: pip install ase")
+    warnings.warn("ASE not installed. Install with: pip install ase", stacklevel=2)
 
 try:
-    import lmdb
+    import lmdb  # noqa: F401
 
     HAS_LMDB = True
 except ImportError:
     HAS_LMDB = False
-    warnings.warn("LMDB not installed. Install with: pip install lmdb")
+    warnings.warn("LMDB not installed. Install with: pip install lmdb", stacklevel=2)
 
 try:
+    from fairchem.core.common.data_utils import collate_fn  # noqa: F401
     from fairchem.core.datasets import LmdbDataset
-    from fairchem.core.common.data_utils import collate_fn
 
     HAS_FAIRCHEM = True
 except ImportError:
     HAS_FAIRCHEM = False
-    warnings.warn("FairChem not installed. Install with: pip install fairchem-core")
+    warnings.warn("FairChem not installed. Install with: pip install fairchem-core", stacklevel=2)
 
 
 class OC20ToPST(Dataset):
@@ -95,7 +95,7 @@ class OC20ToPST(Dataset):
         else:
             return len(self.atoms_list)
 
-    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         """
         Get item converted to PST format.
 
@@ -143,7 +143,7 @@ class OC20ToPST(Dataset):
 
         return atoms
 
-    def atoms_to_pst_format(self, atoms: Atoms) -> Dict[str, torch.Tensor]:
+    def atoms_to_pst_format(self, atoms: Atoms) -> dict[str, torch.Tensor]:
         """
         Convert ASE Atoms to Periodic Set Transformer format.
 
@@ -185,18 +185,14 @@ class OC20ToPST(Dataset):
         # Fill valid entries
         n_atoms_actual = min(n_atoms, self.max_atoms)
         padded_atomic_numbers[:n_atoms_actual] = atomic_numbers[:n_atoms_actual]
-        padded_fractional_coords[:n_atoms_actual] = fractional_positions[
-            :n_atoms_actual
-        ]
+        padded_fractional_coords[:n_atoms_actual] = fractional_positions[:n_atoms_actual]
         mask[:n_atoms_actual] = True
 
         # Convert to tensors
         result = {
             "lattice": lattice,
             "atomic_numbers": torch.tensor(padded_atomic_numbers, dtype=torch.long),
-            "fractional_coords": torch.tensor(
-                padded_fractional_coords, dtype=torch.float32
-            ),
+            "fractional_coords": torch.tensor(padded_fractional_coords, dtype=torch.float32),
             "mask": torch.tensor(mask, dtype=torch.bool),
             "metadata": {
                 "n_atoms": n_atoms,
@@ -208,7 +204,7 @@ class OC20ToPST(Dataset):
         return result
 
 
-def collate_pst_batch(batch: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
+def collate_pst_batch(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
     """
     Collate function for batching PST format data.
 
@@ -306,7 +302,7 @@ class OC20DataModule:
         )
 
 
-def create_example_from_cif(cif_path: str) -> Dict[str, torch.Tensor]:
+def create_example_from_cif(cif_path: str) -> dict[str, torch.Tensor]:
     """
     Create PST format data from a CIF file (useful for testing).
 
@@ -330,17 +326,17 @@ def download_oc20_sample():
     """
     instructions = """
     To download OC20 sample data:
-    
+
     1. Using FairChem download script:
        ```bash
        python -c "from fairchem.core.scripts.download_data import download_data; download_data('s2ef', '200k')"
        ```
-    
+
     2. Manual download from https://fair-chem.github.io/catalysts/datasets/oc20.html
        - Training sets: 200K, 2M, 20M, All
        - Validation sets: id, ood_ads, ood_cat, ood_both
        - Test sets: id, ood_ads, ood_cat, ood_both
-    
+
     3. Data will be in LMDB format, ready for use with this loader
     """
     print(instructions)

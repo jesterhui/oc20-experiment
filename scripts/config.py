@@ -1,10 +1,11 @@
 """Configuration management for S2EF training scripts."""
 
 import json
-import yaml
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Optional, Union
+
+import yaml
 
 
 @dataclass
@@ -64,15 +65,12 @@ class ExperimentConfig:
     notes: str = ""
 
     @classmethod
-    def from_file(cls, config_path: str) -> "ExperimentConfig":
+    def from_file(cls, config_path: Union[str, Path]) -> "ExperimentConfig":
         """Load configuration from YAML or JSON file."""
         config_path = Path(config_path)
 
-        with open(config_path, "r") as f:
-            if (
-                config_path.suffix.lower() == ".yaml"
-                or config_path.suffix.lower() == ".yml"
-            ):
+        with open(config_path) as f:
+            if config_path.suffix.lower() == ".yaml" or config_path.suffix.lower() == ".yml":
                 config_dict = yaml.safe_load(f)
             elif config_path.suffix.lower() == ".json":
                 config_dict = json.load(f)
@@ -88,23 +86,20 @@ class ExperimentConfig:
             notes=config_dict.get("notes", ""),
         )
 
-    def to_file(self, config_path: str) -> None:
+    def to_file(self, config_path: Union[str, Path]) -> None:
         """Save configuration to file."""
         config_path = Path(config_path)
         config_dict = asdict(self)
 
         with open(config_path, "w") as f:
-            if (
-                config_path.suffix.lower() == ".yaml"
-                or config_path.suffix.lower() == ".yml"
-            ):
+            if config_path.suffix.lower() == ".yaml" or config_path.suffix.lower() == ".yml":
                 yaml.dump(config_dict, f, indent=2)
             elif config_path.suffix.lower() == ".json":
                 json.dump(config_dict, f, indent=2)
             else:
                 raise ValueError(f"Unsupported config format: {config_path.suffix}")
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return asdict(self)
 
@@ -126,17 +121,13 @@ def validate_config(config: ExperimentConfig) -> None:
     # Model validation
     assert config.model.d_model > 0, "d_model must be positive"
     assert config.model.nhead > 0, "nhead must be positive"
-    assert (
-        config.model.d_model % config.model.nhead == 0
-    ), "d_model must be divisible by nhead"
+    assert config.model.d_model % config.model.nhead == 0, "d_model must be divisible by nhead"
     assert config.model.num_layers > 0, "num_layers must be positive"
     assert config.model.max_atoms > 0, "max_atoms must be positive"
     assert 0 <= config.model.dropout <= 1, "dropout must be between 0 and 1"
 
     # Data validation
-    assert Path(
-        config.data.data_dir
-    ).exists(), f"Data directory not found: {config.data.data_dir}"
+    assert Path(config.data.data_dir).exists(), f"Data directory not found: {config.data.data_dir}"
     assert 0 <= config.data.val_split <= 1, "val_split must be between 0 and 1"
     assert config.data.batch_size > 0, "batch_size must be positive"
     assert config.data.lattice_format in [

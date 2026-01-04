@@ -1,6 +1,6 @@
 import lzma
 from pathlib import Path
-from typing import List, Tuple
+from typing import TYPE_CHECKING
 
 try:
     from ase import Atoms
@@ -8,11 +8,14 @@ try:
 except ImportError as e:
     raise ImportError("ASE is required. Install with: pip install ase") from e
 
+if TYPE_CHECKING:
+    from .types import S2EFMetadata
 
-def find_data_files(data_dir: Path, logger) -> List[Tuple[Path, Path]]:
+
+def find_data_files(data_dir: Path, logger) -> list[tuple[Path, Path]]:
     """Find all matching .extxyz.xz and .txt.xz file pairs."""
     extxyz_files = list(data_dir.glob("*.extxyz.xz"))
-    data_pairs: List[Tuple[Path, Path]] = []
+    data_pairs: list[tuple[Path, Path]] = []
     for extxyz_file in sorted(extxyz_files):
         base_name = extxyz_file.stem.replace(".extxyz", "")
         txt_file = data_dir / f"{base_name}.txt.xz"
@@ -23,11 +26,11 @@ def find_data_files(data_dir: Path, logger) -> List[Tuple[Path, Path]]:
     return data_pairs
 
 
-def load_metadata(txt_file: Path) -> List["S2EFMetadata"]:  # type: ignore[name-defined]
+def load_metadata(txt_file: Path) -> list["S2EFMetadata"]:
     """Load metadata from compressed text file (.txt.xz)."""
     from .types import S2EFMetadata
 
-    metadata_list: List[S2EFMetadata] = []
+    metadata_list: list[S2EFMetadata] = []
     file_index = int(txt_file.stem.replace(".txt", ""))
 
     with lzma.open(txt_file, "rt") as f:
@@ -36,8 +39,12 @@ def load_metadata(txt_file: Path) -> List["S2EFMetadata"]:  # type: ignore[name-
             if len(parts) == 3:
                 system_id, frame_number, reference_energy = parts
                 # Extract numeric part from frame_number (e.g., "frame206" -> 206)
-                frame_num = int(frame_number.replace("frame", "")) if frame_number.startswith("frame") else int(frame_number)
-                
+                frame_num = (
+                    int(frame_number.replace("frame", ""))
+                    if frame_number.startswith("frame")
+                    else int(frame_number)
+                )
+
                 metadata_list.append(
                     S2EFMetadata(
                         system_id=system_id,
@@ -50,13 +57,12 @@ def load_metadata(txt_file: Path) -> List["S2EFMetadata"]:  # type: ignore[name-
     return metadata_list
 
 
-def load_structures(extxyz_file: Path, temp_dir: Path, logger) -> List[Atoms]:
+def load_structures(extxyz_file: Path, temp_dir: Path, logger) -> list[Atoms]:
     """Load ASE Atoms list from a compressed .extxyz.xz, via temp decompression."""
     temp_file = temp_dir / f"temp_{extxyz_file.stem}"
 
-    with lzma.open(extxyz_file, "rb") as compressed:
-        with open(temp_file, "wb") as decompressed:
-            decompressed.write(compressed.read())
+    with lzma.open(extxyz_file, "rb") as compressed, open(temp_file, "wb") as decompressed:
+        decompressed.write(compressed.read())
 
     try:
         structures = read(str(temp_file), ":")

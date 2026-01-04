@@ -1,7 +1,7 @@
 import lzma
 from pathlib import Path
 
-from oc20_exp.data.s2ef.io import load_metadata, find_data_files
+from oc20_exp.data.s2ef.io import find_data_files, load_metadata
 
 
 def test_load_metadata_tmpfile(tmp_path: Path):

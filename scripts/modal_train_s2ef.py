@@ -5,11 +5,27 @@ This script deploys the S2EF training pipeline to Modal GPUs for accelerated tra
 It handles data upload, GPU training, and result download automatically.
 """
 
-import modal
-from pathlib import Path
-import argparse
+import io
+import logging
+import os
 import sys
-from typing import Optional, Dict, Any
+from pathlib import Path
+from typing import Any, Optional, Union
+
+import modal
+
+
+def safe_extract(tar, path):
+    """Safely extract tar archive, preventing path traversal attacks."""
+    for member in tar.getmembers():
+        # Prevent path traversal
+        member_path = Path(path) / member.name
+        try:
+            member_path.resolve().relative_to(Path(path).resolve())
+        except ValueError as err:
+            raise ValueError(f"Attempted path traversal in tar file: {member.name}") from err
+    tar.extractall(path)
+
 
 # Create Modal image from custom Dockerfile
 image = modal.Image.from_dockerfile("dockerfiles/Dockerfile.s2ef")
@@ -20,6 +36,7 @@ app = modal.App("s2ef-training", image=image)
 data_volume = modal.Volume.from_name("s2ef-data", create_if_missing=True)
 checkpoint_volume = modal.Volume.from_name("s2ef-checkpoints", create_if_missing=True)
 
+
 @app.function(
     gpu="T4:1",  # Single T4 GPU - can be changed to L4, A100, H100, etc.
     memory=16384,  # 16GB RAM
@@ -28,81 +45,85 @@ checkpoint_volume = modal.Volume.from_name("s2ef-checkpoints", create_if_missing
         "/data": data_volume,
         "/checkpoints": checkpoint_volume,
     },
-    allow_concurrent_inputs=1,
 )
+@modal.concurrent(max_inputs=1)
 def train_s2ef_on_gpu(
-    training_config: Dict[str, Any],
+    training_config: dict[str, Any],
     source_code_tarball: bytes,
     data_tarball: Optional[bytes] = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Main training function that runs on Modal GPU.
-    
+
     Args:
         training_config: Dictionary with training parameters
         source_code_tarball: Compressed source code
         data_tarball: Optional compressed data files
-    
+
     Returns:
         Training results and metrics
     """
+    import json
+    import logging
+    import sys
     import tarfile
     import tempfile
-    import json
+
     import torch
-    import sys
-    import os
-    import logging
-    from pathlib import Path
-    
+
     # Set up logging
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[logging.StreamHandler()]
+        handlers=[logging.StreamHandler()],
     )
     logger = logging.getLogger("modal-s2ef-training")
-    
+
     logger.info(f"Starting S2EF training on {torch.cuda.get_device_name()}")
     logger.info(f"CUDA available: {torch.cuda.is_available()}")
     logger.info(f"GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
-    
+
     # Extract source code
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
-        
+
         # Extract source code
-        with tarfile.open(fileobj=tarfile.io.BytesIO(source_code_tarball), mode='r:gz') as tar:
-            tar.extractall(temp_path)
-        
+        with tarfile.open(fileobj=io.BytesIO(source_code_tarball), mode="r:gz") as tar:
+            safe_extract(tar, temp_path)
+
         # Find the extracted project directory
         project_dirs = [d for d in temp_path.iterdir() if d.is_dir() and (d / "src").exists()]
         if not project_dirs:
             raise ValueError("Could not find project directory with src/ folder")
-        
+
         project_dir = project_dirs[0]
         sys.path.insert(0, str(project_dir / "src"))
         sys.path.insert(0, str(project_dir))
-        
+
         # Extract data if provided
         data_dir = Path("/data")
         if data_tarball:
             logger.info("Extracting training data...")
-            with tarfile.open(fileobj=tarfile.io.BytesIO(data_tarball), mode='r:gz') as tar:
-                tar.extractall(data_dir)
-        
+            with tarfile.open(fileobj=io.BytesIO(data_tarball), mode="r:gz") as tar:
+                safe_extract(tar, data_dir)
+
         # Import required modules after adding to path
-        from oc20_exp.models import PeriodicSetTransformer
         from oc20_exp.data.s2ef import S2EFDataIngestion
+        from oc20_exp.models import PeriodicSetTransformer
         from oc20_exp.types import (
-            S2EFSample, BatchedS2EFSamples, collate_s2ef_samples,
-            CrystalStructure, LatticeData, AtomicStructure, S2EFTarget,
-            LatticeFormat, CoordinateSystem,
+            AtomicStructure,
+            CoordinateSystem,
+            CrystalStructure,
+            LatticeData,
+            LatticeFormat,
+            S2EFSample,
+            S2EFTarget,
+            collate_s2ef_samples,
         )
-        
+
         # Import training components (we'll inline them since they're in the script)
         sys.path.append(str(project_dir / "scripts"))
-        
+
         # Define training classes inline (copied from train_s2ef.py)
         class S2EFDataset(torch.utils.data.Dataset):
             """PyTorch Dataset wrapper for S2EF samples."""
@@ -151,7 +172,6 @@ def train_s2ef_on_gpu(
 
                 return S2EFSample(structure=structure, targets=targets)
 
-
         class S2EFModel(torch.nn.Module):
             """S2EF model wrapper around Periodic Set Transformer."""
 
@@ -192,7 +212,7 @@ def train_s2ef_on_gpu(
                     torch.nn.Linear(dim_feedforward, 3),
                 )
 
-            def forward(self, batch: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+            def forward(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
                 """Forward pass for S2EF prediction."""
                 # Get PST embeddings
                 token_embeddings = self.pst(
@@ -217,7 +237,6 @@ def train_s2ef_on_gpu(
                     "forces": predicted_forces,
                     "token_embeddings": token_embeddings,
                 }
-
 
         class S2EFTrainer:
             """Trainer for S2EF model."""
@@ -302,7 +321,7 @@ def train_s2ef_on_gpu(
             def train_epoch(self):
                 """Train for one epoch."""
                 from tqdm import tqdm
-                
+
                 self.model.train()
                 epoch_losses = {"total": 0.0, "energy": 0.0, "forces": 0.0}
                 num_batches = 0
@@ -339,11 +358,17 @@ def train_s2ef_on_gpu(
                     num_batches += 1
 
                     # Update progress bar
-                    pbar.set_postfix({
-                        "loss": f"{losses['total'].item():.4f}",
-                        "energy": f"{losses.get('energy', 0.0):.4f}" if "energy" in losses else "N/A",
-                        "forces": f"{losses.get('forces', 0.0):.4f}" if "forces" in losses else "N/A",
-                    })
+                    pbar.set_postfix(
+                        {
+                            "loss": f"{losses['total'].item():.4f}",
+                            "energy": (
+                                f"{losses.get('energy', 0.0):.4f}" if "energy" in losses else "N/A"
+                            ),
+                            "forces": (
+                                f"{losses.get('forces', 0.0):.4f}" if "forces" in losses else "N/A"
+                            ),
+                        }
+                    )
 
                 # Average losses
                 for key in epoch_losses:
@@ -357,7 +382,7 @@ def train_s2ef_on_gpu(
                     return {}
 
                 from tqdm import tqdm
-                
+
                 self.model.eval()
                 val_losses = {"total": 0.0, "energy": 0.0, "forces": 0.0}
                 num_batches = 0
@@ -386,14 +411,14 @@ def train_s2ef_on_gpu(
 
                 return val_losses
 
-            def train(self, num_epochs: int, save_dir: str = "/checkpoints"):
+            def train(self, num_epochs: int, save_dir: Union[str, Path] = "/checkpoints"):
                 """Main training loop."""
                 import time
-                
+
                 save_dir = Path(save_dir)
                 save_dir.mkdir(parents=True, exist_ok=True)
 
-                history = {"train": [], "val": []}
+                history: dict[str, list[Any]] = {"train": [], "val": []}
                 best_val_loss = float("inf")
 
                 logger.info(f"Starting training for {num_epochs} epochs...")
@@ -414,14 +439,18 @@ def train_s2ef_on_gpu(
 
                     # Log epoch summary
                     logger.info(f"Epoch {epoch + 1}/{num_epochs} ({epoch_time:.1f}s)")
-                    logger.info(f"Train - Total: {train_losses['total']:.4f}, "
-                               f"Energy: {train_losses.get('energy', 0.0):.4f}, "
-                               f"Forces: {train_losses.get('forces', 0.0):.4f}")
+                    logger.info(
+                        f"Train - Total: {train_losses['total']:.4f}, "
+                        f"Energy: {train_losses.get('energy', 0.0):.4f}, "
+                        f"Forces: {train_losses.get('forces', 0.0):.4f}"
+                    )
 
                     if val_losses:
-                        logger.info(f"Val   - Total: {val_losses['total']:.4f}, "
-                                   f"Energy: {val_losses.get('energy', 0.0):.4f}, "
-                                   f"Forces: {val_losses.get('forces', 0.0):.4f}")
+                        logger.info(
+                            f"Val   - Total: {val_losses['total']:.4f}, "
+                            f"Energy: {val_losses.get('energy', 0.0):.4f}, "
+                            f"Forces: {val_losses.get('forces', 0.0):.4f}"
+                        )
 
                         # Save best model
                         if val_losses["total"] < best_val_loss:
@@ -431,12 +460,15 @@ def train_s2ef_on_gpu(
 
                     # Save checkpoint every 5 epochs
                     if (epoch + 1) % 5 == 0:
-                        torch.save({
-                            "epoch": epoch,
-                            "model_state_dict": self.model.state_dict(),
-                            "optimizer_state_dict": self.optimizer.state_dict(),
-                            "history": history,
-                        }, save_dir / f"checkpoint_epoch_{epoch + 1}.pt")
+                        torch.save(
+                            {
+                                "epoch": epoch,
+                                "model_state_dict": self.model.state_dict(),
+                                "optimizer_state_dict": self.optimizer.state_dict(),
+                                "history": history,
+                            },
+                            save_dir / f"checkpoint_epoch_{epoch + 1}.pt",
+                        )
                         logger.info(f"Saved checkpoint at epoch {epoch + 1}")
 
                 # Save final model and history
@@ -449,7 +481,7 @@ def train_s2ef_on_gpu(
         # Now run the actual training
         config = training_config
         logger.info(f"Training configuration: {config}")
-        
+
         # Handle data processing
         processed_data_path = config.get("processed_data")
         if processed_data_path and Path(processed_data_path).exists():
@@ -458,18 +490,24 @@ def train_s2ef_on_gpu(
         else:
             data_dir_path = config.get("data_dir", "/data")
             logger.info(f"Processing raw data from {data_dir_path}")
-            
+
+            # Create temporary directory for processing
+            import tempfile
+
+            temp_process_dir = tempfile.mkdtemp(prefix="s2ef_processed_")
+            logger.info(f"Using temporary processing directory: {temp_process_dir}")
+
             # Create data ingestion
             ingestion = S2EFDataIngestion(
                 data_dir=data_dir_path,
-                output_dir="/tmp/processed",
+                output_dir=temp_process_dir,
                 max_atoms=config.get("max_atoms", 200),
                 max_workers=4,
                 max_files=config.get("max_files", None),
             )
-            
+
             # Process and save data
-            processed_file = "/tmp/processed_s2ef_data.pt"  
+            processed_file = str(Path(temp_process_dir) / "processed_s2ef_data.pt")
             ingestion.save_to_pytorch("processed_s2ef_data.pt")
             dataset = S2EFDataset(processed_file)
 
@@ -477,16 +515,24 @@ def train_s2ef_on_gpu(
 
         # Create data loaders
         from functools import partial
+
         from torch.utils.data import DataLoader
-        
-        collate_fn_with_max_atoms = partial(collate_s2ef_samples, max_atoms=config.get("max_atoms", 200))
+
+        collate_fn_with_max_atoms = partial(
+            collate_s2ef_samples, max_atoms=config.get("max_atoms", 200)
+        )
 
         # Train/validation split
+        from torch.utils.data import Dataset
+
+        train_dataset: Dataset
         val_split = config.get("val_split", 0.1)
         if val_split > 0:
             val_size = int(len(dataset) * val_split)
             train_size = len(dataset) - val_size
-            train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
+            train_dataset, val_dataset = torch.utils.data.random_split(
+                dataset, [train_size, val_size]
+            )
 
             val_loader = DataLoader(
                 val_dataset,
@@ -530,10 +576,10 @@ def train_s2ef_on_gpu(
 
         # Train model
         history = trainer.train(num_epochs=config.get("epochs", 10))
-        
+
         logger.info("Training completed!")
         logger.info("Results saved to /checkpoints")
-        
+
         # Return training summary
         return {
             "status": "completed",
@@ -564,7 +610,7 @@ def main(
 ):
     """
     Deploy S2EF training to Modal GPU.
-    
+
     Args:
         data_dir: Directory containing S2EF data files
         processed_data: Path to preprocessed data (optional)
@@ -583,13 +629,12 @@ def main(
     """
     import tarfile
     import tempfile
-    from pathlib import Path
-    
+
     print(f"Deploying S2EF training to Modal GPU ({gpu_type})")
-    
+
     # Update GPU configuration
     train_s2ef_on_gpu.gpu = gpu_type
-    
+
     # Prepare training configuration
     config = {
         "data_dir": data_dir,
@@ -606,61 +651,65 @@ def main(
         "forces_weight": forces_weight,
         "max_files": max_files,
     }
-    
+
     # Package source code
     print("Packaging source code...")
-    project_root = Path(__file__).parent
-    
-    with tempfile.NamedTemporaryFile(suffix='.tar.gz', delete=False) as tmp_file:
-        with tarfile.open(tmp_file.name, 'w:gz') as tar:
+    project_root = Path(__file__).parent.parent  # Go up from scripts/ to project root
+
+    with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp_file:
+        with tarfile.open(tmp_file.name, "w:gz") as tar:
             # Add source code
-            tar.add(project_root / "src", arcname="oc20_exp/src")
-            tar.add(project_root / "scripts", arcname="oc20_exp/scripts")
+            if (project_root / "src").exists():
+                tar.add(project_root / "src", arcname="oc20_exp/src")
+            if (project_root / "scripts").exists():
+                tar.add(project_root / "scripts", arcname="oc20_exp/scripts")
             if (project_root / "pyproject.toml").exists():
                 tar.add(project_root / "pyproject.toml", arcname="oc20_exp/pyproject.toml")
-        
-        with open(tmp_file.name, 'rb') as f:
+
+        with open(tmp_file.name, "rb") as f:
             source_tarball = f.read()
-    
+
     # Package data if needed
     data_tarball = None
     if data_dir and Path(data_dir).exists():
         print(f"Packaging data from {data_dir}...")
-        with tempfile.NamedTemporaryFile(suffix='.tar.gz', delete=False) as tmp_file:
-            with tarfile.open(tmp_file.name, 'w:gz') as tar:
-                tar.add(data_dir, arcname="data")
-            
-            with open(tmp_file.name, 'rb') as f:
+        with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp_file:
+            with tarfile.open(tmp_file.name, "w:gz") as tar:
+                tar.add(data_dir, arcname=".")
+
+            with open(tmp_file.name, "rb") as f:
                 data_tarball = f.read()
         print(f"Data package size: {len(data_tarball) / 1e6:.1f} MB")
-    
+
     print(f"Source package size: {len(source_tarball) / 1e6:.1f} MB")
-    
+    if data_tarball:
+        config["data_dir"] = "/data"
+
     # Deploy training
     print("Deploying to Modal...")
-    
+
     try:
         result = train_s2ef_on_gpu.remote(
             training_config=config,
             source_code_tarball=source_tarball,
             data_tarball=data_tarball,
         )
-        
+
         print("\nTraining Results:")
         print(f"Status: {result['status']}")
         print(f"Epochs: {result['epochs']}")
         print(f"Dataset size: {result['dataset_size']}")
         print(f"Model parameters: {result['model_params']:,}")
-        if result['final_train_loss']:
+        if result["final_train_loss"]:
             print(f"Final train loss: {result['final_train_loss']:.4f}")
-        if result['final_val_loss']:
+        if result["final_val_loss"]:
             print(f"Final validation loss: {result['final_val_loss']:.4f}")
-        
+
         print("\nTo download checkpoints, run:")
         print("modal volume get s2ef-checkpoints ./modal_checkpoints")
-        
+
         return result
-        
+
     except Exception as e:
         print(f"Training failed: {e}")
         raise
@@ -668,4 +717,20 @@ def main(
 
 if __name__ == "__main__":
     import fire
+
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
+    modal_env_detected = any(
+        os.environ.get(env_name)
+        for env_name in ("MODAL_ENVIRONMENT", "MODAL_APP_ID", "MODAL_FUNCTION_ID")
+    )
+
+    if not modal_env_detected:
+        logger.warning(
+            "This script should be run with 'modal run modal_train_s2ef.py', not directly with python"
+        )
+        logger.info("Example: modal run modal_train_s2ef.py --processed-data ./data.pt --epochs 20")
+        sys.exit("Modal runtime context not detected; aborting.")
+
     fire.Fire(main)

@@ -1,18 +1,16 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, Iterator, List, Tuple
+from typing import Optional
 
 from oc20_exp.utils.logging import get_logger
-from .types import S2EFMetadata
-from .io import find_data_files, load_metadata, load_structures
+
 from .convert import atoms_to_pst_format
-from .persist import (
-    save_all_to_pytorch,
-    save_all_to_lmdb,
-    save_all_to_hdf5,
-)
+from .io import find_data_files, load_metadata, load_structures
+from .persist import save_all_to_hdf5, save_all_to_lmdb, save_all_to_pytorch
+from .types import S2EFMetadata
 
 
 class S2EFDataIngestion:
@@ -26,7 +24,7 @@ class S2EFDataIngestion:
         max_workers: int = 4,
         chunk_size: int = 1000,
         transform_lattice: str = "matrix",
-        max_files: int = None,
+        max_files: Optional[int] = None,
     ):
         self.data_dir = Path(data_dir)
         self.output_dir = Path(output_dir)
@@ -38,15 +36,13 @@ class S2EFDataIngestion:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.logger = get_logger(__name__, self.output_dir)
 
-        self.data_files: List[Tuple[Path, Path]] = find_data_files(
-            self.data_dir, self.logger
-        )
+        self.data_files: list[tuple[Path, Path]] = find_data_files(self.data_dir, self.logger)
         if max_files is not None:
             self.data_files = self.data_files[:max_files]
             self.logger.info(f"Limited to {max_files} data file pairs (test mode)")
         self.logger.info(f"Found {len(self.data_files)} data file pairs")
 
-    def _atoms_to_pst_format(self, atoms, metadata: S2EFMetadata) -> Dict:
+    def _atoms_to_pst_format(self, atoms, metadata: S2EFMetadata) -> dict:
         return atoms_to_pst_format(
             atoms,
             metadata,
@@ -54,7 +50,7 @@ class S2EFDataIngestion:
             transform_lattice=self.transform_lattice,
         )
 
-    def process_file_pair(self, extxyz_file: Path, txt_file: Path) -> List[Dict]:
+    def process_file_pair(self, extxyz_file: Path, txt_file: Path) -> list[dict]:
         self.logger.info(f"Processing {extxyz_file.name} and {txt_file.name}")
         metadata_list = load_metadata(txt_file)
         structures = load_structures(extxyz_file, self.output_dir, self.logger)
@@ -67,18 +63,16 @@ class S2EFDataIngestion:
             metadata_list = metadata_list[:min_count]
             structures = structures[:min_count]
 
-        processed: List[Dict] = []
+        processed: list[dict] = []
         for atoms, meta in zip(structures, metadata_list):
             try:
                 pst = self._atoms_to_pst_format(atoms, meta)
                 processed.append(pst)
             except Exception as e:
-                self.logger.error(
-                    f"Error processing structure {meta.structure_index}: {e}"
-                )
+                self.logger.error(f"Error processing structure {meta.structure_index}: {e}")
         return processed
 
-    def process_all_files(self) -> Iterator[List[Dict]]:
+    def process_all_files(self) -> Iterator[list[dict]]:
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             future_to_files = {
                 executor.submit(self.process_file_pair, extxyz, txt): (extxyz, txt)

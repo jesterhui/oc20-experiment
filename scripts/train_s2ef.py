@@ -10,7 +10,7 @@ import json
 import sys
 import time
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -22,18 +22,17 @@ from tqdm import tqdm
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from oc20_exp.models import PeriodicSetTransformer
 from oc20_exp.data.s2ef import S2EFDataIngestion
+from oc20_exp.models import PeriodicSetTransformer
 from oc20_exp.types import (
-    S2EFSample,
-    BatchedS2EFSamples,
-    collate_s2ef_samples,
+    AtomicStructure,
+    CoordinateSystem,
     CrystalStructure,
     LatticeData,
-    AtomicStructure,
-    S2EFTarget,
     LatticeFormat,
-    CoordinateSystem,
+    S2EFSample,
+    S2EFTarget,
+    collate_s2ef_samples,
 )
 
 
@@ -78,7 +77,9 @@ class S2EFDataset(torch.utils.data.Dataset):
         forces = item.get("forces", None)
         targets = S2EFTarget(energy=energy, forces=forces)
 
-        structure = CrystalStructure(lattice=lattice, atoms=atoms, metadata=item.get("metadata", {}))
+        structure = CrystalStructure(
+            lattice=lattice, atoms=atoms, metadata=item.get("metadata", {})
+        )
 
         return S2EFSample(structure=structure, targets=targets)
 
@@ -123,7 +124,7 @@ class S2EFModel(nn.Module):
             nn.Linear(dim_feedforward, 3),
         )
 
-    def forward(self, batch: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    def forward(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """Forward pass for S2EF prediction."""
         # Get PST embeddings
         token_embeddings = self.pst(
@@ -188,10 +189,10 @@ class S2EFTrainer:
 
     def compute_loss(
         self,
-        predictions: Dict[str, torch.Tensor],
-        targets: Dict[str, torch.Tensor],
+        predictions: dict[str, torch.Tensor],
+        targets: dict[str, torch.Tensor],
         mask: torch.Tensor,
-    ) -> Dict[str, torch.Tensor]:
+    ) -> dict[str, torch.Tensor]:
         """Compute S2EF losses."""
         losses = {}
         total_loss = 0.0
@@ -213,11 +214,16 @@ class S2EFTrainer:
             if mask.size(1) != true_forces.size(1):
                 if mask.size(1) > true_forces.size(1):
                     # Mask is longer than forces, truncate it
-                    adjusted_mask = mask[:, :true_forces.size(1)]
+                    adjusted_mask = mask[:, : true_forces.size(1)]
                 else:
                     # Forces are longer than mask, pad mask with False
-                    adjusted_mask = torch.zeros(true_forces.size(0), true_forces.size(1), dtype=mask.dtype, device=mask.device)
-                    adjusted_mask[:, :mask.size(1)] = mask
+                    adjusted_mask = torch.zeros(
+                        true_forces.size(0),
+                        true_forces.size(1),
+                        dtype=mask.dtype,
+                        device=mask.device,
+                    )
+                    adjusted_mask[:, : mask.size(1)] = mask
                 forces_mask = adjusted_mask.unsqueeze(-1).expand_as(pred_forces)
             else:
                 # Expand mask to cover xyz dimensions
@@ -235,7 +241,7 @@ class S2EFTrainer:
         losses["total"] = total_loss
         return losses
 
-    def train_epoch(self) -> Dict[str, float]:
+    def train_epoch(self) -> dict[str, float]:
         """Train for one epoch."""
         self.model.train()
         epoch_losses = {"total": 0.0, "energy": 0.0, "forces": 0.0}
@@ -276,16 +282,8 @@ class S2EFTrainer:
             pbar.set_postfix(
                 {
                     "loss": f"{losses['total'].item():.4f}",
-                    "energy": (
-                        f"{losses.get('energy', 0.0):.4f}"
-                        if "energy" in losses
-                        else "N/A"
-                    ),
-                    "forces": (
-                        f"{losses.get('forces', 0.0):.4f}"
-                        if "forces" in losses
-                        else "N/A"
-                    ),
+                    "energy": (f"{losses.get('energy', 0.0):.4f}" if "energy" in losses else "N/A"),
+                    "forces": (f"{losses.get('forces', 0.0):.4f}" if "forces" in losses else "N/A"),
                 }
             )
 
@@ -295,7 +293,7 @@ class S2EFTrainer:
 
         return epoch_losses
 
-    def validate(self) -> Dict[str, float]:
+    def validate(self) -> dict[str, float]:
         """Validate the model."""
         if self.val_loader is None:
             return {}
@@ -337,13 +335,13 @@ class S2EFTrainer:
         return val_losses
 
     def train(
-        self, num_epochs: int, save_dir: str = "./checkpoints", save_every: int = 10
-    ) -> Dict[str, Any]:
+        self, num_epochs: int, save_dir: Union[str, Path] = "./checkpoints", save_every: int = 10
+    ) -> dict[str, Any]:
         """Main training loop."""
         save_dir = Path(save_dir)
         save_dir.mkdir(parents=True, exist_ok=True)
 
-        history = {"train": [], "val": []}
+        history: dict[str, list[Any]] = {"train": [], "val": []}
         best_val_loss = float("inf")
 
         print(f"Starting training for {num_epochs} epochs...")
@@ -401,9 +399,7 @@ class S2EFTrainer:
 
 def main():
     """Main training script."""
-    parser = argparse.ArgumentParser(
-        description="Train Periodic Set Transformer on S2EF data"
-    )
+    parser = argparse.ArgumentParser(description="Train Periodic Set Transformer on S2EF data")
 
     # Data arguments
     parser.add_argument(
@@ -417,37 +413,23 @@ def main():
         type=str,
         help="Path to preprocessed S2EF data file (if available)",
     )
-    parser.add_argument(
-        "--val-split", type=float, default=0.1, help="Validation split fraction"
-    )
+    parser.add_argument("--val-split", type=float, default=0.1, help="Validation split fraction")
 
     # Model arguments
     parser.add_argument("--d-model", type=int, default=256, help="Model dimension")
-    parser.add_argument(
-        "--nhead", type=int, default=8, help="Number of attention heads"
-    )
-    parser.add_argument(
-        "--num-layers", type=int, default=4, help="Number of transformer layers"
-    )
-    parser.add_argument(
-        "--max-atoms", type=int, default=200, help="Maximum number of atoms"
-    )
+    parser.add_argument("--nhead", type=int, default=8, help="Number of attention heads")
+    parser.add_argument("--num-layers", type=int, default=4, help="Number of transformer layers")
+    parser.add_argument("--max-atoms", type=int, default=200, help="Maximum number of atoms")
 
     # Training arguments
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
-    parser.add_argument(
-        "--epochs", type=int, default=100, help="Number of training epochs"
-    )
+    parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
     parser.add_argument(
         "--device", type=str, default="auto", help="Device to use (auto, cpu, cuda)"
     )
-    parser.add_argument(
-        "--energy-weight", type=float, default=1.0, help="Weight for energy loss"
-    )
-    parser.add_argument(
-        "--forces-weight", type=float, default=100.0, help="Weight for forces loss"
-    )
+    parser.add_argument("--energy-weight", type=float, default=1.0, help="Weight for energy loss")
+    parser.add_argument("--forces-weight", type=float, default=100.0, help="Weight for forces loss")
 
     # Output arguments
     parser.add_argument(
@@ -456,12 +438,8 @@ def main():
         default="./checkpoints",
         help="Directory to save checkpoints",
     )
-    parser.add_argument(
-        "--save-every", type=int, default=10, help="Save checkpoint every N epochs"
-    )
-    parser.add_argument(
-        "--test", action="store_true", help="Test mode: process only one file pair"
-    )
+    parser.add_argument("--save-every", type=int, default=10, help="Save checkpoint every N epochs")
+    parser.add_argument("--test", action="store_true", help="Test mode: process only one file pair")
 
     args = parser.parse_args()
 
@@ -495,15 +473,16 @@ def main():
 
     # Create collate function with max_atoms parameter
     from functools import partial
+    from torch.utils.data import Dataset
+
     collate_fn_with_max_atoms = partial(collate_s2ef_samples, max_atoms=args.max_atoms)
-    
+
     # Train/validation split
+    train_dataset: Dataset
     if args.val_split > 0:
         val_size = int(len(dataset) * args.val_split)
         train_size = len(dataset) - val_size
-        train_dataset, val_dataset = torch.utils.data.random_split(
-            dataset, [train_size, val_size]
-        )
+        train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
 
         val_loader = DataLoader(
             val_dataset,
@@ -516,7 +495,7 @@ def main():
         train_dataset = dataset
         val_loader = None
         print(f"Train: {len(train_dataset)} (no validation)")
-    
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,

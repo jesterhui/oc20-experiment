@@ -1,10 +1,13 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 try:
     from ase import Atoms
 except ImportError as e:
     raise ImportError("ASE is required. Install with: pip install ase") from e
+
+if TYPE_CHECKING:
+    import numpy as np
 
 
 @dataclass
@@ -25,4 +28,4 @@ class S2EFStructure:
     atoms: Atoms
     metadata: S2EFMetadata
     energy: Optional[float] = None
-    forces: Optional["np.ndarray"] = None  # type: ignore[name-defined]
+    forces: Optional["np.ndarray"] = None

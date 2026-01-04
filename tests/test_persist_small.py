@@ -4,11 +4,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from oc20_exp.data.s2ef.persist import (
-    save_all_to_pytorch,
-    save_all_to_lmdb,
-    save_all_to_hdf5,
-)
+from oc20_exp.data.s2ef.persist import save_all_to_hdf5, save_all_to_lmdb, save_all_to_pytorch
 
 
 def _make_sample(max_atoms: int = 4):
@@ -43,7 +39,7 @@ def test_save_all_to_pytorch(tmp_path: Path):
 
 
 def test_save_all_to_lmdb(tmp_path: Path):
-    lmdb = pytest.importorskip("lmdb")
+    pytest.importorskip("lmdb")
     out = tmp_path / "ds.lmdb"
     save_all_to_lmdb(_chunks(), out)
     # LMDB creates a directory on some platforms or a file on others
@@ -51,7 +47,7 @@ def test_save_all_to_lmdb(tmp_path: Path):
 
 
 def test_save_all_to_hdf5(tmp_path: Path):
-    h5py = pytest.importorskip("h5py")
+    pytest.importorskip("h5py")
     out = tmp_path / "ds.h5"
     save_all_to_hdf5(_chunks(), out, max_atoms=4)
     assert out.exists()

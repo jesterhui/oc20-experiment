@@ -96,7 +96,7 @@ class PeriodicSetTransformer(nn.Module):
 
         # Convert lattice to 6D format if needed
         lattice_6d = self._ensure_lattice_6d(lattice)
-        
+
         cell_token = self.create_cell_token(lattice_6d)
 
         atom_tokens = self.create_atom_tokens(atomic_numbers, fractional_coords, mask)
@@ -117,7 +117,7 @@ class PeriodicSetTransformer(nn.Module):
                 tuple(output.shape),
             )
 
-        return output
+        return output  # type: ignore[no-any-return]
 
     def create_cell_token(self, lattice: torch.Tensor) -> torch.Tensor:
         """Create [CELL] token from 6D lattice parameters."""
@@ -126,7 +126,7 @@ class PeriodicSetTransformer(nn.Module):
 
         cell_token = rearrange(cell_embedding, "b d -> b 1 d") + self.cell_token_type
 
-        return cell_token
+        return cell_token  # type: ignore[no-any-return]
 
     def create_atom_tokens(
         self,
@@ -142,7 +142,7 @@ class PeriodicSetTransformer(nn.Module):
             mask_e = rearrange(mask, "b n -> b n 1").to(atom_tokens.dtype)
             atom_tokens = atom_tokens * mask_e
 
-        return atom_tokens
+        return atom_tokens  # type: ignore[no-any-return]
 
     def create_transformer_mask(
         self, atom_mask: Optional[torch.Tensor], device: torch.device
@@ -172,33 +172,33 @@ class PeriodicSetTransformer(nn.Module):
             raise ValueError(
                 "lattice must be (batch, 6) or (batch, 3, 3), got shape: " + str(lattice.shape)
             )
-    
+
     def _matrix_to_params(self, matrix: torch.Tensor) -> torch.Tensor:
         """Convert 3x3 lattice matrix to 6D parameters (a,b,c,α,β,γ)."""
         # Extract lattice vectors
         a_vec = matrix[..., 0, :]  # (batch, 3)
         b_vec = matrix[..., 1, :]  # (batch, 3)
         c_vec = matrix[..., 2, :]  # (batch, 3)
-        
+
         # Calculate lengths
         a = torch.norm(a_vec, dim=-1)  # (batch,)
         b = torch.norm(b_vec, dim=-1)  # (batch,)
         c = torch.norm(c_vec, dim=-1)  # (batch,)
-        
+
         # Calculate angles in degrees
         cos_alpha = torch.sum(b_vec * c_vec, dim=-1) / (b * c)
         cos_beta = torch.sum(a_vec * c_vec, dim=-1) / (a * c)
         cos_gamma = torch.sum(a_vec * b_vec, dim=-1) / (a * b)
-        
+
         # Clamp to avoid numerical issues with acos
         cos_alpha = torch.clamp(cos_alpha, -1.0 + 1e-7, 1.0 - 1e-7)
         cos_beta = torch.clamp(cos_beta, -1.0 + 1e-7, 1.0 - 1e-7)
         cos_gamma = torch.clamp(cos_gamma, -1.0 + 1e-7, 1.0 - 1e-7)
-        
+
         alpha = torch.acos(cos_alpha) * 180.0 / math.pi
         beta = torch.acos(cos_beta) * 180.0 / math.pi
         gamma = torch.acos(cos_gamma) * 180.0 / math.pi
-        
+
         return torch.stack([a, b, c, alpha, beta, gamma], dim=-1)
 
     def _validate_inputs(
@@ -222,9 +222,7 @@ class PeriodicSetTransformer(nn.Module):
         if fractional_coords.shape[-1] != 3:
             raise ValueError("fractional_coords must have last dim 3")
         if mask is not None and mask.shape != atomic_numbers.shape:
-            raise ValueError(
-                "mask shape must match atomic_numbers shape (batch, max_atoms)"
-            )
+            raise ValueError("mask shape must match atomic_numbers shape (batch, max_atoms)")
 
         max_in = int(atomic_numbers.max().item())
         min_in = int(atomic_numbers.min().item())
@@ -234,9 +232,7 @@ class PeriodicSetTransformer(nn.Module):
             )
 
         if torch.any(fractional_coords < 0.0) or torch.any(fractional_coords >= 1.0):
-            n_bad = int(
-                ((fractional_coords < 0.0) | (fractional_coords >= 1.0)).sum().item()
-            )
+            n_bad = int(((fractional_coords < 0.0) | (fractional_coords >= 1.0)).sum().item())
             logger.warning(
                 "%d fractional coords outside [0,1); downstream may assume wrapping.",
                 n_bad,
@@ -261,7 +257,7 @@ class UnitCellEmbedding(nn.Module):
             raise ValueError(
                 "lattice must be shape (batch, 6) = (a,b,c,alpha_deg,beta_deg,gamma_deg)"
             )
-        return self.mlp(lattice)
+        return self.mlp(lattice)  # type: ignore[no-any-return]
 
 
 class PositionalEmbedding(nn.Module):
@@ -283,7 +279,7 @@ class PositionalEmbedding(nn.Module):
         base = torch.cat([sin_feat, cos_feat], dim=-1)
         if self.proj is None:
             return base
-        return self.proj(base)
+        return self.proj(base)  # type: ignore[no-any-return]
 
 
 class AtomEmbedding(nn.Module):
@@ -303,4 +299,4 @@ class AtomEmbedding(nn.Module):
         elem = self.element_embedding(atomic_numbers)
         pos = self.positional(fractional_coords)
         pos = self.pos_proj(pos)
-        return elem + pos
+        return elem + pos  # type: ignore[no-any-return]
