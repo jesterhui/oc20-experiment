@@ -116,6 +116,7 @@ def _load_training_config(config_path: Optional[Union[str, Path]]) -> dict[str, 
         "/data": data_volume,
         "/checkpoints": checkpoint_volume,
     },
+    secrets=[modal.Secret.from_name("wandb-secret")],
 )
 @modal.concurrent(max_inputs=1)
 def train_s2ef_on_gpu(
@@ -553,6 +554,16 @@ def train_s2ef_on_gpu(
         config = training_config
         logger.info(f"Training configuration: {config}")
 
+        # Initialize W&B logging
+        import wandb
+
+        wandb.init(
+            project="oc20-s2ef-training",
+            config=config,
+            name=f"s2ef-{config.get('d_model', 256)}d-{config.get('num_layers', 4)}l",
+        )
+        logger.info("W&B logging initialized")
+
         # Handle data processing
         processed_data_path = config.get("processed_data")
         if processed_data_path and Path(processed_data_path).exists():
@@ -652,6 +663,10 @@ def train_s2ef_on_gpu(
 
         logger.info("Training completed!")
         logger.info("Results saved to /checkpoints")
+
+        # Finish W&B run
+        wandb.finish()
+        logger.info("W&B logging finished")
 
         # Return training summary
         return {
