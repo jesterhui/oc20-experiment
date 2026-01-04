@@ -1,5 +1,5 @@
-name: "s2ef_pst_default"
-notes: "Default configuration for S2EF training with Periodic Set Transformer"
+name: s2ef_pst_default
+notes: Default configuration for S2EF training with Periodic Set Transformer
 seed: 42
 
 model:
@@ -15,22 +15,22 @@ model:
   cell_features_dim: 32
 
 data:
-  data_dir: "s2ef_train_200K/s2ef_train_200K"
-  processed_data: null
+  data_dir: s2ef_train_200K/s2ef_train_200K
+  processed_data:
   val_split: 0.1
   batch_size: 32
   num_workers: 4
   max_atoms: 200
-  lattice_format: "params_6d"
+  lattice_format: params_6d
 
 training:
   lr: 0.0001
   epochs: 100
-  device: "auto"
+  device: auto
   energy_weight: 1.0
   forces_weight: 100.0
-  save_dir: "./checkpoints"
+  save_dir: ./checkpoints
   save_every: 10
-  grad_clip_norm: null
-  scheduler: null
+  grad_clip_norm:
+  scheduler:
   warmup_epochs: 0

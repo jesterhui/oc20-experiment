@@ -1,18 +1,18 @@
 """Typed data containers and helpers for OC20 experiments."""
 
 from .data_structures import (
-    LatticeFormat,
-    CoordinateSystem,
-    LatticeData,
     AtomicStructure,
+    BatchedS2EFSamples,
+    CoordinateSystem,
     CrystalStructure,
-    S2EFTarget,
+    LatticeData,
+    LatticeFormat,
     ModelPrediction,
     S2EFSample,
-    BatchedS2EFSamples,
+    S2EFTarget,
     collate_s2ef_samples,
-    save_crystal_structure,
     load_crystal_structure,
+    save_crystal_structure,
 )
 
 __all__ = [

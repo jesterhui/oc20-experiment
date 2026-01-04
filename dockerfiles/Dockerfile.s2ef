@@ -1,30 +1,41 @@
 # S2EF Training Dockerfile for Modal GPU deployment
-# Based on NVIDIA PyTorch container for optimal GPU performance
-FROM nvcr.io/nvidia/pytorch:24.12-py3
+# Based on PyTorch CUDA image while pinning Python 3.9
+FROM pytorch/pytorch:2.2.0-cuda12.1-cudnn8-devel
+
+SHELL ["bash", "-lc"]
+
+# Create dedicated Python 3.9 environment from conda-forge/defaults and install system deps
+RUN conda create -y -n oc20 -c conda-forge -c defaults python=3.9 \
+    && conda clean -ay \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends git build-essential curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Activate env by default
+ENV PATH="/opt/conda/envs/oc20/bin:$PATH" \
+    CONDA_DEFAULT_ENV="oc20" \
+    PYTHONUNBUFFERED="1" \
+    PIP_NO_CACHE_DIR="1" \
+    PYTHONDONTWRITEBYTECODE="1"
+
+# Install uv (fast Python package manager)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && install -Dm755 ~/.local/bin/uv /usr/local/bin/uv \
+    && rm -rf ~/.local
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    git \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install uv for fast Python package management
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.local/bin:$PATH"
-
 # Copy project files
-COPY pyproject.toml .
-COPY src/ src/
+COPY pyproject.toml uv.lock ./
+COPY src/ ./src/
 
-# Install Python dependencies using uv
-RUN uv sync --system --no-dev
+# Install Python dependencies via uv to ensure build-time order
+RUN uv sync --frozen --no-install-project
+RUN uv pip install --no-cache-dir -e .
 
 # Set Python path for imports
-ENV PYTHONPATH="/app/src:/app:$PYTHONPATH"
+ENV PYTHONPATH="/app/src:/app"
 
 # Default command (can be overridden)
-CMD ["python", "-c", "import torch; print(f'PyTorch {torch.__version__} with CUDA {torch.version.cuda}')"]
+CMD ["python", "-c", "import sys, torch; print(f'Python {sys.version.split()[0]} | PyTorch {torch.__version__} | CUDA {torch.version.cuda}')"]

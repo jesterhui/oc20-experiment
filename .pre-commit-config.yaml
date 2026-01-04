@@ -1,0 +1,80 @@
+# Pre-commit hooks for code quality
+# See https://pre-commit.com for more information
+# Install: pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  # Ruff - Fast Python linter (replaces flake8, isort, and more)
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: v0.8.4
+  hooks:
+      # Run the linter
+  - id: ruff
+    args: [--fix]
+      # Run the formatter
+  - id: ruff-format
+
+  # Black - Code formatter
+- repo: https://github.com/psf/black
+  rev: 24.10.0
+  hooks:
+  - id: black
+    language_version: python3.9
+
+  # isort - Import sorting
+- repo: https://github.com/pycqa/isort
+  rev: 5.13.2
+  hooks:
+  - id: isort
+    args: [--profile, black, --line-length, '100']
+
+  # mypy - Static type checking
+- repo: https://github.com/pre-commit/mirrors-mypy
+  rev: v1.13.0
+  hooks:
+  - id: mypy
+    additional_dependencies:
+    - types-setuptools
+    - types-PyYAML
+    - types-tqdm
+    - torch
+    - numpy
+    args: [--config-file=pyproject.toml]
+    exclude: ^(tests/|examples/|scripts/demo_|scripts/example_)
+
+  # General file checks
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v5.0.0
+  hooks:
+  - id: trailing-whitespace
+  - id: end-of-file-fixer
+  - id: check-yaml
+  - id: check-added-large-files
+    args: [--maxkb=1000]
+  - id: check-merge-conflict
+  - id: check-toml
+  - id: debug-statements
+  - id: mixed-line-ending
+
+  # Security checks
+- repo: https://github.com/pycqa/bandit
+  rev: 1.7.10
+  hooks:
+  - id: bandit
+    args: [-c, pyproject.toml, -r, src/]
+    additional_dependencies: ['bandit[toml]']
+
+  # Docstring coverage (optional - can be strict)
+- repo: https://github.com/econchick/interrogate
+  rev: 1.7.0
+  hooks:
+  - id: interrogate
+    args: [--config=pyproject.toml]
+    pass_filenames: false
+
+  # YAML formatting
+- repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
+  rev: v2.14.0
+  hooks:
+  - id: pretty-format-yaml
+    args: [--autofix, --indent, '2']

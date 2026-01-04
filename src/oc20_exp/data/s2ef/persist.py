@@ -1,18 +1,19 @@
-from pathlib import Path
-from typing import Dict, Iterable, Iterator, List
 import io as _io
 import json
+from collections.abc import Iterable, Iterator
+from pathlib import Path
+
 import numpy as np
 import torch
 
 
 def save_all_to_pytorch(
-    chunks: Iterator[List[Dict]],
+    chunks: Iterator[list[dict]],
     output_path: Path,
     *,
     save_stats: bool = True,
 ):
-    all_data: List[Dict] = []
+    all_data: list[dict] = []
     for chunk in chunks:
         all_data.extend(chunk)
     torch.save(all_data, output_path)
@@ -21,7 +22,7 @@ def save_all_to_pytorch(
 
 
 def save_all_to_lmdb(
-    chunks: Iterator[List[Dict]],
+    chunks: Iterator[list[dict]],
     output_path: Path,
     *,
     map_size_bytes: int = 50 * 1024**3,
@@ -46,7 +47,7 @@ def save_all_to_lmdb(
 
 
 def save_all_to_hdf5(
-    chunks: Iterable[List[Dict]],
+    chunks: Iterable[list[dict]],
     output_path: Path,
     *,
     max_atoms: int,
@@ -103,20 +104,16 @@ def save_all_to_hdf5(
         f["reference_energies"].resize((idx,))
 
 
-def save_dataset_stats(data: List[Dict], stats_file: Path):
+def save_dataset_stats(data: list[dict], stats_file: Path):
     stats = {
         "total_structures": len(data),
-        "max_atoms_per_structure": int(
-            max(d["metadata"]["n_atoms"] for d in data) if data else 0
-        ),
-        "unique_systems": len(set(d["metadata"]["system_id"] for d in data)),
-        "formulas": sorted(list(set(d["metadata"]["formula"] for d in data)))[:100],
+        "max_atoms_per_structure": int(max(d["metadata"]["n_atoms"] for d in data) if data else 0),
+        "unique_systems": len({d["metadata"]["system_id"] for d in data}),
+        "formulas": sorted({d["metadata"]["formula"] for d in data})[:100],
         "avg_atoms_per_structure": (
             float(np.mean([d["metadata"]["n_atoms"] for d in data])) if data else 0.0
         ),
-        "avg_volume": (
-            float(np.mean([d["metadata"]["volume"] for d in data])) if data else 0.0
-        ),
+        "avg_volume": (float(np.mean([d["metadata"]["volume"] for d in data])) if data else 0.0),
     }
     with open(stats_file, "w") as f:
         json.dump(stats, f, indent=2)

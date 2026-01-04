@@ -1,4 +1,3 @@
-import pytest
 import torch
 
 from oc20_exp.models import PeriodicSetTransformer
