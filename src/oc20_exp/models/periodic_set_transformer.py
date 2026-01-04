@@ -37,6 +37,19 @@ class PeriodicSetTransformer(nn.Module):
         cell_features_dim: int = 32,
         dropout: float = 0.1,
     ):
+        """Initialize the Periodic Set Transformer.
+
+        Args:
+            d_model: Dimension of transformer model.
+            nhead: Number of attention heads.
+            num_layers: Number of transformer layers.
+            dim_feedforward: Dimension of feedforward network.
+            max_atomic_number: Maximum atomic number supported (default 118).
+            fourier_features_dim: Dimension of Fourier positional features.
+            lattice_hidden_dim: Hidden dimension for lattice embedding MLP.
+            cell_features_dim: Output dimension of cell embedding.
+            dropout: Dropout rate for transformer.
+        """
         super().__init__()
 
         self.d_model = d_model
@@ -120,7 +133,14 @@ class PeriodicSetTransformer(nn.Module):
         return output  # type: ignore[no-any-return]
 
     def create_cell_token(self, lattice: torch.Tensor) -> torch.Tensor:
-        """Create [CELL] token from 6D lattice parameters."""
+        """Create [CELL] token from 6D lattice parameters.
+
+        Args:
+            lattice: Lattice parameters (batch, 6).
+
+        Returns:
+            Cell token tensor (batch, 1, d_model).
+        """
         cell_embedding = self.unitcell(lattice)  # (batch, cell_features_dim)
         cell_embedding = self.cell_proj(cell_embedding)  # (batch, d_model)
 
@@ -134,7 +154,16 @@ class PeriodicSetTransformer(nn.Module):
         fractional_coords: torch.Tensor,
         mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        """Create atom tokens from atomic numbers and fractional coordinates."""
+        """Create atom tokens from atomic numbers and fractional coordinates.
+
+        Args:
+            atomic_numbers: Atomic numbers (batch, max_atoms).
+            fractional_coords: Fractional coordinates (batch, max_atoms, 3).
+            mask: Valid atom mask (batch, max_atoms), True for valid atoms.
+
+        Returns:
+            Atom tokens tensor (batch, max_atoms, d_model).
+        """
         atom_tokens = self.atom_embedding(atomic_numbers, fractional_coords)
         atom_tokens = atom_tokens + self.atom_token_type
 
@@ -147,7 +176,15 @@ class PeriodicSetTransformer(nn.Module):
     def create_transformer_mask(
         self, atom_mask: Optional[torch.Tensor], device: torch.device
     ) -> Optional[torch.Tensor]:
-        """Create padding mask for transformer."""
+        """Create padding mask for transformer.
+
+        Args:
+            atom_mask: Valid atom mask (batch, max_atoms).
+            device: Device for mask tensor.
+
+        Returns:
+            Transformer padding mask (batch, 1+max_atoms), True for padding.
+        """
         if atom_mask is None:
             return None
 
@@ -161,7 +198,14 @@ class PeriodicSetTransformer(nn.Module):
         return transformer_mask
 
     def _ensure_lattice_6d(self, lattice: torch.Tensor) -> torch.Tensor:
-        """Convert lattice matrix to 6D parameters if needed."""
+        """Convert lattice matrix to 6D parameters if needed.
+
+        Args:
+            lattice: Either (batch, 6) or (batch, 3, 3) tensor.
+
+        Returns:
+            Lattice in 6D format (batch, 6).
+        """
         if lattice.dim() == 2 and lattice.shape[-1] == 6:
             # Already in 6D format
             return lattice
@@ -174,7 +218,14 @@ class PeriodicSetTransformer(nn.Module):
             )
 
     def _matrix_to_params(self, matrix: torch.Tensor) -> torch.Tensor:
-        """Convert 3x3 lattice matrix to 6D parameters (a,b,c,α,β,γ)."""
+        """Convert 3x3 lattice matrix to 6D parameters (a,b,c,α,β,γ).
+
+        Args:
+            matrix: Lattice matrix (batch, 3, 3).
+
+        Returns:
+            6D parameters (batch, 6) in format [a, b, c, alpha, beta, gamma] (degrees).
+        """
         # Extract lattice vectors
         a_vec = matrix[..., 0, :]  # (batch, 3)
         b_vec = matrix[..., 1, :]  # (batch, 3)
@@ -208,6 +259,17 @@ class PeriodicSetTransformer(nn.Module):
         fractional_coords: torch.Tensor,
         mask: Optional[torch.Tensor],
     ) -> None:
+        """Validate input tensors for forward pass.
+
+        Args:
+            lattice: Lattice tensor (batch, 6) or (batch, 3, 3).
+            atomic_numbers: Atomic numbers (batch, max_atoms).
+            fractional_coords: Fractional coordinates (batch, max_atoms, 3).
+            mask: Valid atom mask (batch, max_atoms).
+
+        Raises:
+            ValueError: If inputs have incorrect shapes or values out of range.
+        """
         # Updated validation to handle both formats
         if lattice.dim() == 2 and lattice.shape[-1] == 6:
             # 6D format is valid
@@ -243,6 +305,12 @@ class UnitCellEmbedding(nn.Module):
     """Encode unit cell (a,b,c,alpha,beta,gamma) via small MLP."""
 
     def __init__(self, hidden_dim: int, output_dim: int):
+        """Initialize unit cell embedding.
+
+        Args:
+            hidden_dim: Hidden dimension for MLP.
+            output_dim: Output dimension for cell features.
+        """
         super().__init__()
         self.mlp = nn.Sequential(
             nn.Linear(6, hidden_dim),
@@ -253,6 +321,14 @@ class UnitCellEmbedding(nn.Module):
         )
 
     def forward(self, lattice: torch.Tensor) -> torch.Tensor:
+        """Encode lattice parameters via MLP.
+
+        Args:
+            lattice: Lattice parameters (batch, 6).
+
+        Returns:
+            Embedded lattice features (batch, output_dim).
+        """
         if lattice.dim() != 2 or lattice.shape[-1] != 6:
             raise ValueError(
                 "lattice must be shape (batch, 6) = (a,b,c,alpha_deg,beta_deg,gamma_deg)"
@@ -264,6 +340,12 @@ class PositionalEmbedding(nn.Module):
     """Sin/cos(2π·u) positional embedding with optional projection to latent size."""
 
     def __init__(self, input_dim: int = 3, output_dim: int = 32):
+        """Initialize positional embedding.
+
+        Args:
+            input_dim: Input coordinate dimension (default 3 for x,y,z).
+            output_dim: Output embedding dimension.
+        """
         super().__init__()
         base_dim = 2 * input_dim  # sin and cos per coordinate
         if output_dim < base_dim:
@@ -273,6 +355,14 @@ class PositionalEmbedding(nn.Module):
         self.proj = None if output_dim == base_dim else nn.Linear(base_dim, output_dim)
 
     def forward(self, fractional_coords: torch.Tensor) -> torch.Tensor:
+        """Compute Fourier positional features from fractional coordinates.
+
+        Args:
+            fractional_coords: Fractional coordinates (..., input_dim).
+
+        Returns:
+            Positional features (..., output_dim).
+        """
         phases = 2 * math.pi * fractional_coords
         sin_feat = torch.sin(phases)
         cos_feat = torch.cos(phases)
@@ -286,6 +376,13 @@ class AtomEmbedding(nn.Module):
     """Element embedding + positional embedding to form atom tokens."""
 
     def __init__(self, max_atomic_number: int, d_model: int, pos_dim: int = 32):
+        """Initialize atom embedding module.
+
+        Args:
+            max_atomic_number: Maximum atomic number for element embedding.
+            d_model: Model dimension for output tokens.
+            pos_dim: Dimension for positional features.
+        """
         super().__init__()
         self.element_embedding = nn.Embedding(max_atomic_number + 1, d_model)
         self.positional = PositionalEmbedding(input_dim=3, output_dim=pos_dim)
@@ -296,6 +393,15 @@ class AtomEmbedding(nn.Module):
         atomic_numbers: torch.Tensor,  # (batch, atoms)
         fractional_coords: torch.Tensor,  # (batch, atoms, 3)
     ) -> torch.Tensor:
+        """Combine element and positional embeddings.
+
+        Args:
+            atomic_numbers: Atomic numbers (batch, atoms).
+            fractional_coords: Fractional coordinates (batch, atoms, 3).
+
+        Returns:
+            Atom embeddings (batch, atoms, d_model).
+        """
         elem = self.element_embedding(atomic_numbers)
         pos = self.positional(fractional_coords)
         pos = self.pos_proj(pos)

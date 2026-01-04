@@ -85,11 +85,16 @@ class OC20ToPST(Dataset):
             self.atoms_list = read(data_path, ":")
         elif self.data_format == "atoms":
             # Assume data_path is a list of Atoms objects
-            self.atoms_list = data_path
+            self.atoms_list = data_path  # type: ignore[assignment]
         else:
             raise ValueError(f"Unsupported data_format: {data_format}")
 
     def __len__(self) -> int:
+        """Return the number of structures in the dataset.
+
+        Returns:
+            Number of structures available.
+        """
         if self.data_format == "lmdb":
             return len(self.dataset)
         else:
@@ -112,13 +117,20 @@ class OC20ToPST(Dataset):
             data_obj = self.dataset[idx]
             atoms = self._data_obj_to_atoms(data_obj)
         else:
-            atoms = self.atoms_list[idx]
+            atoms = self.atoms_list[idx]  # type: ignore[assignment]
 
         # Convert to PST format
         return self.atoms_to_pst_format(atoms)
 
     def _data_obj_to_atoms(self, data_obj) -> Atoms:
-        """Convert FairChem data object to ASE Atoms."""
+        """Convert FairChem data object to ASE Atoms.
+
+        Args:
+            data_obj: FairChem data object with pos, atomic_numbers, and cell attributes.
+
+        Returns:
+            ASE Atoms object with positions, atomic numbers, and periodic cell.
+        """
         if not HAS_ASE:
             raise ImportError("ASE required for atoms conversion")
 
@@ -246,6 +258,18 @@ class OC20DataModule:
         data_format: str = "lmdb",
         transform_lattice: str = "matrix",
     ):
+        """Initialize OC20 data module for train/val/test splits.
+
+        Args:
+            train_path: Path to training data.
+            val_path: Path to validation data (optional).
+            test_path: Path to test data (optional).
+            max_atoms: Maximum number of atoms for padding.
+            batch_size: Batch size for data loaders.
+            num_workers: Number of workers for data loading.
+            data_format: Format of data files ("lmdb", "traj", or "atoms").
+            transform_lattice: Lattice representation ("matrix" or "params").
+        """
         self.train_path = train_path
         self.val_path = val_path
         self.test_path = test_path
@@ -256,6 +280,11 @@ class OC20DataModule:
         self.transform_lattice = transform_lattice
 
     def train_dataloader(self) -> DataLoader:
+        """Create training data loader.
+
+        Returns:
+            DataLoader configured for training (shuffled).
+        """
         dataset = OC20ToPST(
             self.train_path,
             max_atoms=self.max_atoms,
@@ -271,6 +300,11 @@ class OC20DataModule:
         )
 
     def val_dataloader(self) -> Optional[DataLoader]:
+        """Create validation data loader.
+
+        Returns:
+            DataLoader configured for validation (not shuffled), or None if no val_path.
+        """
         if self.val_path is None:
             return None
         dataset = OC20ToPST(
@@ -288,6 +322,11 @@ class OC20DataModule:
         )
 
     def test_dataloader(self) -> Optional[DataLoader]:
+        """Create test data loader.
+
+        Returns:
+            DataLoader configured for testing (not shuffled), or None if no test_path.
+        """
         if self.test_path is None:
             return None
         dataset = OC20ToPST(
@@ -320,13 +359,11 @@ def create_example_from_cif(cif_path: str) -> dict[str, object]:
 
     atoms = read(cif_path)
     dataset = OC20ToPST("dummy", max_atoms=200, data_format="atoms")
-    return dataset.atoms_to_pst_format(atoms)
+    return dataset.atoms_to_pst_format(atoms)  # type: ignore[arg-type]
 
 
 def download_oc20_sample():
-    """
-    Instructions for downloading OC20 sample data.
-    """
+    """Display instructions for downloading OC20 sample data."""
     instructions = """
     To download OC20 sample data:
 
