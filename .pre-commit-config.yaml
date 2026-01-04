@@ -5,41 +5,45 @@
 
 repos:
   # Ruff - Fast Python linter (replaces flake8, isort, and more)
-- repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.8.4
+- repo: local
   hooks:
-      # Run the linter
   - id: ruff
-    args: [--fix]
-      # Run the formatter
+    name: ruff
+    entry: uv run ruff check --fix
+    language: system
+    types: [python]
   - id: ruff-format
+    name: ruff-format
+    entry: uv run ruff format
+    language: system
+    types: [python]
 
   # Black - Code formatter
-- repo: https://github.com/psf/black
-  rev: 24.10.0
+- repo: local
   hooks:
   - id: black
-    language_version: python3.9
+    name: black
+    entry: uv run black
+    language: system
+    types: [python]
 
   # isort - Import sorting
-- repo: https://github.com/pycqa/isort
-  rev: 5.13.2
+- repo: local
   hooks:
   - id: isort
-    args: [--profile, black, --line-length, '100']
+    name: isort
+    entry: uv run isort --profile black --line-length 100
+    language: system
+    types: [python]
 
   # mypy - Static type checking
-- repo: https://github.com/pre-commit/mirrors-mypy
-  rev: v1.13.0
+- repo: local
   hooks:
   - id: mypy
-    additional_dependencies:
-    - types-setuptools
-    - types-PyYAML
-    - types-tqdm
-    - torch
-    - numpy
-    args: [--config-file=pyproject.toml]
+    name: mypy
+    entry: uv run mypy --config-file=pyproject.toml
+    language: system
+    types: [python]
     exclude: ^(tests/|examples/|scripts/demo_|scripts/example_)
 
   # General file checks
@@ -57,19 +61,21 @@ repos:
   - id: mixed-line-ending
 
   # Security checks
-- repo: https://github.com/pycqa/bandit
-  rev: 1.7.10
+- repo: local
   hooks:
   - id: bandit
-    args: [-c, pyproject.toml, -r, src/]
-    additional_dependencies: ['bandit[toml]']
+    name: bandit
+    entry: uv run bandit -c pyproject.toml -r src/
+    language: system
+    types: [python]
 
   # Docstring coverage (optional - can be strict)
-- repo: https://github.com/econchick/interrogate
-  rev: 1.7.0
+- repo: local
   hooks:
   - id: interrogate
-    args: [--config=pyproject.toml]
+    name: interrogate
+    entry: uv run interrogate --config=pyproject.toml
+    language: system
     pass_filenames: false
 
   # YAML formatting

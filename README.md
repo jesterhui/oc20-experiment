@@ -55,6 +55,15 @@ uv run python scripts/train_s2ef.py \
   --save-dir ./checkpoints
 ```
 
+## Modal GPU (Config File)
+
+```bash
+modal run scripts/modal_train_s2ef.py --config /path/to/config.yaml --max-files 1 --epochs 1
+```
+
+- `--config` accepts YAML/JSON; CLI flags override config values when provided.
+- Keep configs outside the repo to avoid triggering Modal image rebuilds.
+
 ## Data
 
 - Use OC20 S2EF LMDBs or ASE trajectories; see OC20 docs for downloads and splits.

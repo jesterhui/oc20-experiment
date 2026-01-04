@@ -21,6 +21,7 @@ data:
   batch_size: 32
   num_workers: 4
   max_atoms: 200
+  max_files:
   lattice_format: params_6d
 
 training:

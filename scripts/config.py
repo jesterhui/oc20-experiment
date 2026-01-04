@@ -34,6 +34,7 @@ class DataConfig:
     batch_size: int = 32
     num_workers: int = 4
     max_atoms: int = 200
+    max_files: Optional[int] = None
     lattice_format: str = "params_6d"  # "params_6d" or "matrix_3x3"
 
 

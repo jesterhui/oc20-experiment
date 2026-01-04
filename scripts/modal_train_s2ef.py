@@ -6,13 +6,15 @@ It handles data upload, GPU training, and result download automatically.
 """
 
 import io
+import json
 import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Optional, Union, cast
 
 import modal
+import yaml
 
 
 def safe_extract(tar, path):
@@ -35,6 +37,75 @@ app = modal.App("s2ef-training", image=image)
 # Create a shared volume for data persistence
 data_volume = modal.Volume.from_name("s2ef-data", create_if_missing=True)
 checkpoint_volume = modal.Volume.from_name("s2ef-checkpoints", create_if_missing=True)
+
+DEFAULT_TRAINING_CONFIG: dict[str, Any] = {
+    "data_dir": "../s2ef_train_200K/s2ef_train_200K",
+    "processed_data": "",
+    "epochs": 10,
+    "batch_size": 32,
+    "lr": 1e-4,
+    "d_model": 256,
+    "nhead": 8,
+    "num_layers": 4,
+    "dim_feedforward": 512,
+    "dropout": 0.1,
+    "max_atoms": 200,
+    "val_split": 0.1,
+    "energy_weight": 1.0,
+    "forces_weight": 100.0,
+    "max_files": None,
+}
+
+
+def _load_config_file(config_path: Union[str, Path]) -> dict[str, Any]:
+    config_path = Path(config_path)
+    with open(config_path) as f:
+        if config_path.suffix.lower() in {".yaml", ".yml"}:
+            config_data = yaml.safe_load(f)
+        elif config_path.suffix.lower() == ".json":
+            config_data = json.load(f)
+        else:
+            raise ValueError(f"Unsupported config format: {config_path.suffix}")
+
+    return config_data or {}
+
+
+def _build_training_config(config_data: dict[str, Any]) -> dict[str, Any]:
+    model_config = config_data.get("model", {})
+    data_config = config_data.get("data", {})
+    training_config = config_data.get("training", {})
+
+    max_atoms = data_config.get("max_atoms", model_config.get("max_atoms"))
+
+    config = {
+        "data_dir": data_config.get("data_dir"),
+        "processed_data": data_config.get("processed_data"),
+        "epochs": training_config.get("epochs"),
+        "batch_size": data_config.get("batch_size"),
+        "lr": training_config.get("lr"),
+        "d_model": model_config.get("d_model"),
+        "nhead": model_config.get("nhead"),
+        "num_layers": model_config.get("num_layers"),
+        "dim_feedforward": model_config.get("dim_feedforward"),
+        "dropout": model_config.get("dropout"),
+        "max_atoms": max_atoms,
+        "val_split": data_config.get("val_split"),
+        "energy_weight": training_config.get("energy_weight"),
+        "forces_weight": training_config.get("forces_weight"),
+        "max_files": data_config.get("max_files"),
+    }
+
+    return {key: value for key, value in config.items() if value is not None}
+
+
+def _load_training_config(config_path: Optional[Union[str, Path]]) -> dict[str, Any]:
+    config = DEFAULT_TRAINING_CONFIG.copy()
+    if not config_path:
+        return config
+
+    config_data = _load_config_file(config_path)
+    config.update(_build_training_config(config_data))
+    return config
 
 
 @app.function(
@@ -558,7 +629,9 @@ def train_s2ef_on_gpu(
             d_model=config.get("d_model", 256),
             nhead=config.get("nhead", 8),
             num_layers=config.get("num_layers", 4),
+            dim_feedforward=config.get("dim_feedforward", 512),
             max_atoms=config.get("max_atoms", 200),
+            dropout=config.get("dropout", 0.1),
         )
 
         logger.info(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
@@ -593,18 +666,21 @@ def train_s2ef_on_gpu(
 
 @app.local_entrypoint()
 def main(
-    data_dir: str = "../s2ef_train_200K/s2ef_train_200K",
-    processed_data: str = "",
-    epochs: int = 10,
-    batch_size: int = 32,
-    lr: float = 1e-4,
-    d_model: int = 256,
-    nhead: int = 8,
-    num_layers: int = 4,
-    max_atoms: int = 200,
-    val_split: float = 0.1,
-    energy_weight: float = 1.0,
-    forces_weight: float = 100.0,
+    config: str = "",
+    data_dir: Optional[str] = None,
+    processed_data: Optional[str] = None,
+    epochs: Optional[int] = None,
+    batch_size: Optional[int] = None,
+    lr: Optional[float] = None,
+    d_model: Optional[int] = None,
+    nhead: Optional[int] = None,
+    num_layers: Optional[int] = None,
+    dim_feedforward: Optional[int] = None,
+    dropout: Optional[float] = None,
+    max_atoms: Optional[int] = None,
+    val_split: Optional[float] = None,
+    energy_weight: Optional[float] = None,
+    forces_weight: Optional[float] = None,
     max_files: Optional[int] = None,
     gpu_type: str = "T4:1",
 ):
@@ -612,6 +688,7 @@ def main(
     Deploy S2EF training to Modal GPU.
 
     Args:
+        config: Optional YAML/JSON config file path
         data_dir: Directory containing S2EF data files
         processed_data: Path to preprocessed data (optional)
         epochs: Number of training epochs
@@ -620,12 +697,37 @@ def main(
         d_model: Model dimension
         nhead: Number of attention heads
         num_layers: Number of transformer layers
+        dim_feedforward: Feedforward dimension
+        dropout: Transformer dropout
         max_atoms: Maximum number of atoms
         val_split: Validation split fraction
         energy_weight: Weight for energy loss
         forces_weight: Weight for forces loss
         max_files: Maximum number of files to process (for testing)
         gpu_type: GPU type (T4:1, L4:1, A100:1, H100:1, etc.)
+
+    Config file schema (YAML/JSON):
+      data:
+        data_dir: str
+        processed_data: str | null
+        val_split: float
+        batch_size: int
+        num_workers: int
+        max_atoms: int
+        max_files: int | null
+        lattice_format: str
+      model:
+        d_model: int
+        nhead: int
+        num_layers: int
+        dim_feedforward: int
+        max_atoms: int
+        dropout: float
+      training:
+        lr: float
+        epochs: int
+        energy_weight: float
+        forces_weight: float
     """
     import tarfile
     import tempfile
@@ -633,10 +735,11 @@ def main(
     print(f"Deploying S2EF training to Modal GPU ({gpu_type})")
 
     # Update GPU configuration
-    train_s2ef_on_gpu.gpu = gpu_type
+    cast(Any, train_s2ef_on_gpu).gpu = gpu_type
 
     # Prepare training configuration
-    config = {
+    config_dict = _load_training_config(config)
+    overrides = {
         "data_dir": data_dir,
         "processed_data": processed_data,
         "epochs": epochs,
@@ -645,12 +748,17 @@ def main(
         "d_model": d_model,
         "nhead": nhead,
         "num_layers": num_layers,
+        "dim_feedforward": dim_feedforward,
+        "dropout": dropout,
         "max_atoms": max_atoms,
         "val_split": val_split,
         "energy_weight": energy_weight,
         "forces_weight": forces_weight,
         "max_files": max_files,
     }
+    for key, value in overrides.items():
+        if value is not None:
+            config_dict[key] = value
 
     # Package source code
     print("Packaging source code...")
@@ -671,6 +779,7 @@ def main(
 
     # Package data if needed
     data_tarball = None
+    data_dir = config_dict.get("data_dir")
     if data_dir and Path(data_dir).exists():
         print(f"Packaging data from {data_dir}...")
         with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp_file:
@@ -683,14 +792,14 @@ def main(
 
     print(f"Source package size: {len(source_tarball) / 1e6:.1f} MB")
     if data_tarball:
-        config["data_dir"] = "/data"
+        config_dict["data_dir"] = "/data"
 
     # Deploy training
     print("Deploying to Modal...")
 
     try:
         result = train_s2ef_on_gpu.remote(
-            training_config=config,
+            training_config=config_dict,
             source_code_tarball=source_tarball,
             data_tarball=data_tarball,
         )
