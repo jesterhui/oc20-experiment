@@ -20,14 +20,12 @@ dependencies = [
     "modal>=1.1.4",
     "fire>=0.7.1",
     "PyYAML>=6.0.0",
+    "wandb>=0.21.3",
 ]
 
 [project.optional-dependencies]
 fairchem = [
     "fairchem-core>=1.0.0",
-]
-wandb = [
-    "wandb>=0.15.0",
 ]
 dev = [
     "pytest>=7.0.0",

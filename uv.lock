@@ -1830,6 +1830,7 @@ dependencies = [
     { name = "torch-geometric" },
     { name = "torch-scatter" },
     { name = "tqdm" },
+    { name = "wandb" },
 ]
 
 [package.optional-dependencies]
@@ -1848,9 +1849,6 @@ dev = [
 ]
 fairchem = [
     { name = "fairchem-core" },
-]
-wandb = [
-    { name = "wandb" },
 ]
 
 [package.metadata]
@@ -1880,9 +1878,9 @@ requires-dist = [
     { name = "tqdm", specifier = ">=4.0.0" },
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0.0" },
     { name = "types-tqdm", marker = "extra == 'dev'", specifier = ">=4.66.0" },
-    { name = "wandb", marker = "extra == 'wandb'", specifier = ">=0.15.0" },
+    { name = "wandb", specifier = ">=0.21.3" },
 ]
-provides-extras = ["fairchem", "wandb", "dev"]
+provides-extras = ["fairchem", "dev"]
 
 [[package]]
 name = "omegaconf"
