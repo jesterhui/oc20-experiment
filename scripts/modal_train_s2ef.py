@@ -10,10 +10,13 @@ import json
 import logging
 import os
 import sys
+import tarfile
+import tempfile
 from pathlib import Path
 from typing import Any, Optional, Union, cast
 
 import modal
+import wandb
 import yaml
 
 
@@ -26,7 +29,7 @@ def safe_extract(tar, path):
             member_path.resolve().relative_to(Path(path).resolve())
         except ValueError as err:
             raise ValueError(f"Attempted path traversal in tar file: {member.name}") from err
-    tar.extractall(path)
+    tar.extractall(path)  # nosec B202 - validated above
 
 
 # Create Modal image from custom Dockerfile
@@ -135,12 +138,6 @@ def train_s2ef_on_gpu(
     Returns:
         Training results and metrics
     """
-    import json
-    import logging
-    import sys
-    import tarfile
-    import tempfile
-
     import torch
 
     # Set up logging
@@ -555,8 +552,6 @@ def train_s2ef_on_gpu(
         logger.info(f"Training configuration: {config}")
 
         # Initialize W&B logging
-        import wandb
-
         wandb.init(
             project="oc20-s2ef-training",
             config=config,
@@ -574,8 +569,6 @@ def train_s2ef_on_gpu(
             logger.info(f"Processing raw data from {data_dir_path}")
 
             # Create temporary directory for processing
-            import tempfile
-
             temp_process_dir = tempfile.mkdtemp(prefix="s2ef_processed_")
             logger.info(f"Using temporary processing directory: {temp_process_dir}")
 
@@ -744,9 +737,6 @@ def main(
         energy_weight: float
         forces_weight: float
     """
-    import tarfile
-    import tempfile
-
     print(f"Deploying S2EF training to Modal GPU ({gpu_type})")
 
     # Update GPU configuration

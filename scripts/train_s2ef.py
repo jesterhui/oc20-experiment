@@ -473,6 +473,7 @@ def main():
 
     # Create collate function with max_atoms parameter
     from functools import partial
+
     from torch.utils.data import Dataset
 
     collate_fn_with_max_atoms = partial(collate_s2ef_samples, max_atoms=args.max_atoms)
