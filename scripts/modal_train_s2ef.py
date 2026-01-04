@@ -57,6 +57,7 @@ DEFAULT_TRAINING_CONFIG: dict[str, Any] = {
     "energy_weight": 1.0,
     "forces_weight": 100.0,
     "max_files": None,
+    "use_wandb": True,
 }
 
 
@@ -96,6 +97,7 @@ def _build_training_config(config_data: dict[str, Any]) -> dict[str, Any]:
         "energy_weight": training_config.get("energy_weight"),
         "forces_weight": training_config.get("forces_weight"),
         "max_files": data_config.get("max_files"),
+        "use_wandb": training_config.get("use_wandb"),
     }
 
     return {key: value for key, value in config.items() if value is not None}
@@ -393,6 +395,7 @@ def train_s2ef_on_gpu(
 
                 self.model.train()
                 epoch_losses = {"total": 0.0, "energy": 0.0, "forces": 0.0}
+                epoch_energy_per_atom = 0.0
                 num_batches = 0
 
                 pbar = tqdm(self.train_loader, desc="Training")
@@ -415,6 +418,14 @@ def train_s2ef_on_gpu(
 
                     # Compute loss
                     losses = self.compute_loss(predictions, targets, model_input["mask"])
+
+                    # Compute energy per atom for logging
+                    if "energy" in losses:
+                        num_atoms = model_input["mask"].sum().item()
+                        energy_per_atom = losses["energy"].item() / (
+                            num_atoms / model_input["mask"].size(0)
+                        )
+                        epoch_energy_per_atom += energy_per_atom
 
                     # Backward pass
                     self.optimizer.zero_grad()
@@ -443,6 +454,10 @@ def train_s2ef_on_gpu(
                 for key in epoch_losses:
                     epoch_losses[key] /= num_batches
 
+                epoch_losses["energy_per_atom"] = (
+                    epoch_energy_per_atom / num_batches if num_batches > 0 else 0.0
+                )
+
                 return epoch_losses
 
             def validate(self):
@@ -454,6 +469,7 @@ def train_s2ef_on_gpu(
 
                 self.model.eval()
                 val_losses = {"total": 0.0, "energy": 0.0, "forces": 0.0}
+                val_energy_per_atom = 0.0
                 num_batches = 0
 
                 with torch.no_grad():
@@ -470,6 +486,14 @@ def train_s2ef_on_gpu(
                         predictions = self.model(model_input)
                         losses = self.compute_loss(predictions, targets, model_input["mask"])
 
+                        # Compute energy per atom for logging
+                        if "energy" in losses:
+                            num_atoms = model_input["mask"].sum().item()
+                            energy_per_atom = losses["energy"].item() / (
+                                num_atoms / model_input["mask"].size(0)
+                            )
+                            val_energy_per_atom += energy_per_atom
+
                         for key, loss in losses.items():
                             val_losses[key] += loss.item()
                         num_batches += 1
@@ -478,9 +502,18 @@ def train_s2ef_on_gpu(
                 for key in val_losses:
                     val_losses[key] /= num_batches
 
+                val_losses["energy_per_atom"] = (
+                    val_energy_per_atom / num_batches if num_batches > 0 else 0.0
+                )
+
                 return val_losses
 
-            def train(self, num_epochs: int, save_dir: Union[str, Path] = "/checkpoints"):
+            def train(
+                self,
+                num_epochs: int,
+                save_dir: Union[str, Path] = "/checkpoints",
+                use_wandb: bool = False,
+            ):
                 """Main training loop."""
                 import time
 
@@ -511,21 +544,48 @@ def train_s2ef_on_gpu(
                     logger.info(
                         f"Train - Total: {train_losses['total']:.4f}, "
                         f"Energy: {train_losses.get('energy', 0.0):.4f}, "
+                        f"Energy/atom: {train_losses.get('energy_per_atom', 0.0):.4f}, "
                         f"Forces: {train_losses.get('forces', 0.0):.4f}"
                     )
+
+                    # Log training metrics to W&B
+                    if use_wandb:
+                        wandb_metrics = {
+                            "epoch": epoch + 1,
+                            "train/total": train_losses["total"],
+                            "train/energy": train_losses.get("energy", 0.0),
+                            "train/energy_per_atom": train_losses.get("energy_per_atom", 0.0),
+                            "train/forces": train_losses.get("forces", 0.0),
+                        }
 
                     if val_losses:
                         logger.info(
                             f"Val   - Total: {val_losses['total']:.4f}, "
                             f"Energy: {val_losses.get('energy', 0.0):.4f}, "
+                            f"Energy/atom: {val_losses.get('energy_per_atom', 0.0):.4f}, "
                             f"Forces: {val_losses.get('forces', 0.0):.4f}"
                         )
+
+                        # Log validation metrics to W&B
+                        if use_wandb:
+                            wandb_metrics.update(
+                                {
+                                    "val/total": val_losses["total"],
+                                    "val/energy": val_losses.get("energy", 0.0),
+                                    "val/energy_per_atom": val_losses.get("energy_per_atom", 0.0),
+                                    "val/forces": val_losses.get("forces", 0.0),
+                                }
+                            )
 
                         # Save best model
                         if val_losses["total"] < best_val_loss:
                             best_val_loss = val_losses["total"]
                             torch.save(self.model.state_dict(), save_dir / "best_model.pt")
                             logger.info("Saved best model")
+
+                    # Actually log to W&B
+                    if use_wandb:
+                        wandb.log(wandb_metrics)
 
                     # Save checkpoint every 5 epochs
                     if (epoch + 1) % 5 == 0:
@@ -551,13 +611,17 @@ def train_s2ef_on_gpu(
         config = training_config
         logger.info(f"Training configuration: {config}")
 
-        # Initialize W&B logging
-        wandb.init(
-            project="oc20-s2ef-training",
-            config=config,
-            name=f"s2ef-{config.get('d_model', 256)}d-{config.get('num_layers', 4)}l",
-        )
-        logger.info("W&B logging initialized")
+        # Initialize W&B logging if enabled
+        use_wandb = config.get("use_wandb", False)
+        if use_wandb:
+            wandb.init(
+                project="oc20-s2ef-training",
+                config=config,
+                name=f"s2ef-{config.get('d_model', 256)}d-{config.get('num_layers', 4)}l",
+            )
+            logger.info("W&B logging initialized")
+        else:
+            logger.info("W&B logging disabled")
 
         # Handle data processing
         processed_data_path = config.get("processed_data")
@@ -652,14 +716,15 @@ def train_s2ef_on_gpu(
         )
 
         # Train model
-        history = trainer.train(num_epochs=config.get("epochs", 10))
+        history = trainer.train(num_epochs=config.get("epochs", 10), use_wandb=use_wandb)
 
         logger.info("Training completed!")
         logger.info("Results saved to /checkpoints")
 
-        # Finish W&B run
-        wandb.finish()
-        logger.info("W&B logging finished")
+        # Finish W&B run if enabled
+        if use_wandb:
+            wandb.finish()
+            logger.info("W&B logging finished")
 
         # Return training summary
         return {
@@ -690,6 +755,7 @@ def main(
     energy_weight: Optional[float] = None,
     forces_weight: Optional[float] = None,
     max_files: Optional[int] = None,
+    use_wandb: bool = True,
     gpu_type: str = "T4:1",
 ):
     """
@@ -712,6 +778,7 @@ def main(
         energy_weight: Weight for energy loss
         forces_weight: Weight for forces loss
         max_files: Maximum number of files to process (for testing)
+        use_wandb: Enable Weights & Biases logging (default: True)
         gpu_type: GPU type (T4:1, L4:1, A100:1, H100:1, etc.)
 
     Config file schema (YAML/JSON):
@@ -736,6 +803,7 @@ def main(
         epochs: int
         energy_weight: float
         forces_weight: float
+        use_wandb: bool
     """
     print(f"Deploying S2EF training to Modal GPU ({gpu_type})")
 
@@ -760,6 +828,7 @@ def main(
         "energy_weight": energy_weight,
         "forces_weight": forces_weight,
         "max_files": max_files,
+        "use_wandb": use_wandb,
     }
     for key, value in overrides.items():
         if value is not None:
